@@ -8,6 +8,7 @@ export default defineConfig({
     react(),
     glsl()
   ],
+  base: process.env.GITHUB_PAGES ? "/vr-shader-experience/" : "/",
   root: path.resolve(import.meta.dirname, "client"),
   resolve: {
     alias: {
