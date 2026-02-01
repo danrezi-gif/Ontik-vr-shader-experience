@@ -25,16 +25,17 @@ interface ShaderRendererProps {
   colorShift: number;
   zoom: number;
   headRotationY: number;
+  introProgress: number;
 }
 
-function ShaderRenderer({ shaderId, audioData, speed, pulse, brightness, colorShift, zoom, headRotationY }: ShaderRendererProps) {
+function ShaderRenderer({ shaderId, audioData, speed, pulse, brightness, colorShift, zoom, headRotationY, introProgress }: ShaderRendererProps) {
   switch (shaderId) {
     case 'audio-reactive':
       return <VRShaderScene audioData={audioData} paletteIndex={0} />;
     case 'morphing-blobs':
       return <MorphingBlobsShader />;
     case 'abstract-waves':
-      return <AbstractWavesShader speed={speed} brightness={brightness} colorShift={colorShift} zoom={zoom} pulse={pulse} headRotationY={headRotationY} />;
+      return <AbstractWavesShader speed={speed} brightness={brightness} colorShift={colorShift} zoom={zoom} pulse={pulse} headRotationY={headRotationY} introProgress={introProgress} />;
     case 'sunset-clouds':
       return <SunsetCloudsShader speed={speed} />;
     case 'spiral-tunnel':
@@ -580,6 +581,7 @@ function App() {
               colorShift={colorShift}
               zoom={zoom}
               headRotationY={headRotationY}
+              introProgress={introProgress}
             />
             <VRControllerHandler
               onBack={handleBack}

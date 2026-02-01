@@ -85,7 +85,8 @@ interface AbstractWavesShaderProps {
   brightness?: number;
   colorShift?: number;
   pulse?: number;
-  headRotationY?: number; // Initial head Y rotation for alignment
+  headRotationY?: number;
+  introProgress?: number; // 0-1, controls approach animation
 }
 
 export function AbstractWavesShader({
@@ -94,7 +95,8 @@ export function AbstractWavesShader({
   brightness = 1.0,
   colorShift = 0.0,
   pulse = 0.0,
-  headRotationY = 0
+  headRotationY = 0,
+  introProgress = 1
 }: AbstractWavesShaderProps) {
   const meshRef = useRef<THREE.Mesh>(null);
 
@@ -124,8 +126,12 @@ export function AbstractWavesShader({
   // 35 degrees = ~0.61 radians
   const tiltAngle = 35 * (Math.PI / 180);
 
+  // Sphere scale: starts large (seam far away), shrinks as user "approaches"
+  // Scale goes from 4 (distant) to 1 (normal) during intro
+  const scaleMultiplier = 4 - 3 * introProgress; // 4 → 1
+
   return (
-    <mesh ref={meshRef} scale={[-1, 1, 1]} rotation={[tiltAngle, -headRotationY, 0]}>
+    <mesh ref={meshRef} scale={[-scaleMultiplier, scaleMultiplier, scaleMultiplier]} rotation={[tiltAngle, -headRotationY, 0]}>
       <sphereGeometry args={[50, 64, 32]} />
       <shaderMaterial
         vertexShader={vertexShader}
