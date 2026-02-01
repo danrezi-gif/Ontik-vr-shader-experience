@@ -65,7 +65,7 @@ function ShaderCard({ shader, onSelect, index }: { shader: ShaderInfo; onSelect:
           fontWeight: '500',
           letterSpacing: '0.15em',
           textTransform: 'uppercase',
-          fontFamily: 'Inter, system-ui, sans-serif',
+          fontFamily: '"Space Grotesk", system-ui, sans-serif',
         }}>
           Experience
         </span>
@@ -76,7 +76,7 @@ function ShaderCard({ shader, onSelect, index }: { shader: ShaderInfo; onSelect:
         fontSize: '1.5rem',
         fontWeight: '300',
         marginBottom: '12px',
-        fontFamily: 'Inter, system-ui, sans-serif',
+        fontFamily: '"Space Grotesk", system-ui, sans-serif',
         letterSpacing: '-0.02em',
       }}>
         {shader.name}
@@ -86,7 +86,7 @@ function ShaderCard({ shader, onSelect, index }: { shader: ShaderInfo; onSelect:
         color: 'rgba(255, 255, 255, 0.5)',
         fontSize: '0.875rem',
         lineHeight: '1.6',
-        fontFamily: 'Inter, system-ui, sans-serif',
+        fontFamily: '"Space Grotesk", system-ui, sans-serif',
         fontWeight: '400',
         marginBottom: '24px',
       }}>
@@ -103,7 +103,7 @@ function ShaderCard({ shader, onSelect, index }: { shader: ShaderInfo; onSelect:
           fontSize: '0.8rem',
           fontWeight: '500',
           letterSpacing: '0.05em',
-          fontFamily: 'Inter, system-ui, sans-serif',
+          fontFamily: '"Space Grotesk", system-ui, sans-serif',
         }}>
           Launch
         </span>
@@ -129,14 +129,16 @@ function ShaderCard({ shader, onSelect, index }: { shader: ShaderInfo; onSelect:
 export function ShaderGallery({ onSelectShader }: ShaderGalleryProps) {
   return (
     <div style={{
-      position: 'absolute',
+      position: 'fixed',
       top: 0,
       left: 0,
       width: '100vw',
-      minHeight: '100vh',
+      height: '100vh',
       background: '#050508',
-      overflow: 'auto',
+      overflowY: 'scroll',
+      overflowX: 'hidden',
       zIndex: 100,
+      WebkitOverflowScrolling: 'touch',
     }}>
       {/* Subtle gradient overlay */}
       <div style={{
@@ -167,7 +169,7 @@ export function ShaderGallery({ onSelectShader }: ShaderGalleryProps) {
             letterSpacing: '0.2em',
             textTransform: 'uppercase',
             marginBottom: '20px',
-            fontFamily: 'Inter, system-ui, sans-serif',
+            fontFamily: '"Space Grotesk", system-ui, sans-serif',
           }}>
             Immersive Visuals
           </p>
@@ -176,7 +178,7 @@ export function ShaderGallery({ onSelectShader }: ShaderGalleryProps) {
             fontWeight: '200',
             color: '#ffffff',
             marginBottom: '20px',
-            fontFamily: 'Inter, system-ui, sans-serif',
+            fontFamily: '"Space Grotesk", system-ui, sans-serif',
             letterSpacing: '-0.03em',
             lineHeight: '1.1',
           }}>
@@ -185,7 +187,7 @@ export function ShaderGallery({ onSelectShader }: ShaderGalleryProps) {
           <p style={{
             color: 'rgba(255, 255, 255, 0.4)',
             fontSize: '1rem',
-            fontFamily: 'Inter, system-ui, sans-serif',
+            fontFamily: '"Space Grotesk", system-ui, sans-serif',
             fontWeight: '400',
             maxWidth: '400px',
             margin: '0 auto',
@@ -222,7 +224,7 @@ export function ShaderGallery({ onSelectShader }: ShaderGalleryProps) {
           <p style={{
             color: 'rgba(255, 255, 255, 0.3)',
             fontSize: '0.8rem',
-            fontFamily: 'Inter, system-ui, sans-serif',
+            fontFamily: '"Space Grotesk", system-ui, sans-serif',
             fontWeight: '400',
           }}>
             Optimized for Meta Quest  ·  Works on all devices
