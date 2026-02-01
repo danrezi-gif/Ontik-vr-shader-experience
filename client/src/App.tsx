@@ -160,22 +160,15 @@ function VRControllerHandler({ onBack, onSpeedChange }: VRControllerHandlerProps
         }
         lastButtonStates.current['a'] = aPressed;
 
-        // B button (button 5) = go back
+        // B button (button 5) = decrease speed
         const bPressed = gamepad.buttons[5]?.pressed || false;
         if (bPressed && !lastButtonStates.current['b']) {
-          onBack();
+          onSpeedChange(-0.1);
         }
         lastButtonStates.current['b'] = bPressed;
       }
 
       if (handedness === 'left') {
-        // X button (button 4) = decrease speed
-        const xPressed = gamepad.buttons[4]?.pressed || false;
-        if (xPressed && !lastButtonStates.current['x']) {
-          onSpeedChange(-0.1);
-        }
-        lastButtonStates.current['x'] = xPressed;
-
         // Y button (button 5) = go back
         const yPressed = gamepad.buttons[5]?.pressed || false;
         if (yPressed && !lastButtonStates.current['y']) {
