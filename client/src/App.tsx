@@ -20,16 +20,17 @@ interface ShaderRendererProps {
   shaderId: string;
   audioData: any;
   speed: number;
+  pulse: number;
 }
 
-function ShaderRenderer({ shaderId, audioData, speed }: ShaderRendererProps) {
+function ShaderRenderer({ shaderId, audioData, speed, pulse }: ShaderRendererProps) {
   switch (shaderId) {
     case 'audio-reactive':
       return <VRShaderScene audioData={audioData} paletteIndex={0} />;
     case 'morphing-blobs':
       return <MorphingBlobsShader />;
     case 'abstract-waves':
-      return <AbstractWavesShader />;
+      return <AbstractWavesShader speed={1.0} brightness={1.0} pulse={pulse} />;
     case 'sunset-clouds':
       return <SunsetCloudsShader speed={speed} />;
     case 'spiral-tunnel':
@@ -276,12 +277,41 @@ function BackgroundMusic({ shouldPlay }: BackgroundMusicProps) {
   return null;
 }
 
+// BPM-based pulse calculator
+const BPM = 85; // Adjust to match your music's BPM
+
+function useBPMPulse(bpm: number, enabled: boolean) {
+  const [pulse, setPulse] = useState(0);
+
+  useEffect(() => {
+    if (!enabled) return;
+
+    const msPerBeat = 60000 / bpm;
+    const startTime = Date.now();
+
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      const beatProgress = (elapsed % msPerBeat) / msPerBeat;
+      // Sharp attack, exponential decay
+      const pulseValue = Math.pow(1 - beatProgress, 3);
+      setPulse(pulseValue);
+    }, 16); // ~60fps
+
+    return () => clearInterval(interval);
+  }, [bpm, enabled]);
+
+  return pulse;
+}
+
 function App() {
   const [selectedShader, setSelectedShader] = useState<string | null>(null);
   const [vrError, setVrError] = useState<string | null>(null);
   const [musicStarted, setMusicStarted] = useState(false);
   const [speed, setSpeed] = useState(0.5);
   const { audioData, toggleListening } = useAudioAnalyzer();
+
+  // BPM pulse for audio-reactive effects
+  const pulse = useBPMPulse(BPM, musicStarted && selectedShader === 'abstract-waves');
 
   const handleSpeedChange = useCallback((delta: number) => {
     setSpeed(prev => Math.max(0, Math.min(2.0, prev + delta)));
@@ -355,7 +385,7 @@ function App() {
         <XR store={store}>
           <XROrigin position={[0, 0, 0]} />
           <Suspense fallback={null}>
-            <ShaderRenderer shaderId={selectedShader} audioData={audioData} speed={speed} />
+            <ShaderRenderer shaderId={selectedShader} audioData={audioData} speed={speed} pulse={pulse} />
             <VRControllerHandler onBack={handleBack} onSpeedChange={handleSpeedChange} />
             <BackgroundMusic shouldPlay={musicStarted} />
           </Suspense>
