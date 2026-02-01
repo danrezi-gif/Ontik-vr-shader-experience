@@ -4,8 +4,11 @@ import * as THREE from 'three';
 
 const vertexShader = `
   varying vec2 vUv;
+  varying vec3 vSphereDir;
   void main() {
     vUv = uv;
+    // Pass the sphere direction (position on unit sphere = direction from center)
+    vSphereDir = normalize(position);
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
@@ -15,6 +18,7 @@ const fragmentShader = `
   uniform float iSpeed;
   uniform vec2 iResolution;
   varying vec2 vUv;
+  varying vec3 vSphereDir;
 
   void main() {
     vec2 uv = (vUv - 0.5) * 2.0;
@@ -27,7 +31,7 @@ const fragmentShader = `
     float s = 0.0;
     vec4 O = vec4(0.0);
 
-    // Ray direction for fog calculation
+    // Ray direction for raymarch (screen-space)
     vec3 rd = normalize(vec3(uv * 2.0, -1.0));
 
     for(float iter = 0.0; iter < 50.0; iter++) {
@@ -53,21 +57,23 @@ const fragmentShader = `
       z += d;
 
       // Coloring with sine wave using cloud depth and x-coordinate
-      // exp(s/0.1) replaced with cheap polynomial: max(0, 1 + s*10 + s*s*30)
-      float brightness = max(0.0, 1.0 + s * 10.0 + s * s * 30.0);
+      // Fade brightness at cloud boundary to prevent artifacts outside clouds
+      float cloudMask = smoothstep(-0.05, 0.15, s);
+      float sPos = max(0.0, s);
+      float brightness = cloudMask * (1.0 + sPos * 10.0 + sPos * sPos * 20.0);
       O += (cos(s / 0.07 + p.x + 0.5 * t - vec4(3.0, 4.0, 5.0, 0.0)) + 1.5) * brightness / d;
     }
 
     // Tanh tonemapping
     O = tanh(O * O / 4e8);
 
-    // Fog to hide seams at edges (below, above, behind)
-    // Based on vertical angle (y component of ray direction)
-    float verticalFade = 1.0 - smoothstep(0.6, 1.0, abs(rd.y));
-    // Based on looking backward (positive z means looking back on sphere interior)
-    float behindFade = 1.0 - smoothstep(0.3, 0.8, rd.z);
+    // Fog to hide seams using actual sphere position (works with VR head tracking)
+    // Fade at poles (top/bottom of sphere where geometry pinches)
+    float polesFade = 1.0 - smoothstep(0.7, 0.95, abs(vSphereDir.y));
+    // Fade at back of sphere (where UV seam occurs)
+    float seamFade = 1.0 - smoothstep(0.6, 0.9, vSphereDir.z);
     // Combine fades
-    float fog = verticalFade * behindFade;
+    float fog = polesFade * seamFade;
 
     O.rgb *= fog;
 
