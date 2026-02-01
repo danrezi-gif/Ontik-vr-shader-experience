@@ -24,16 +24,17 @@ interface ShaderRendererProps {
   brightness: number;
   colorShift: number;
   zoom: number;
+  reveal: number;
 }
 
-function ShaderRenderer({ shaderId, audioData, speed, pulse, brightness, colorShift, zoom }: ShaderRendererProps) {
+function ShaderRenderer({ shaderId, audioData, speed, pulse, brightness, colorShift, zoom, reveal }: ShaderRendererProps) {
   switch (shaderId) {
     case 'audio-reactive':
       return <VRShaderScene audioData={audioData} paletteIndex={0} />;
     case 'morphing-blobs':
       return <MorphingBlobsShader />;
     case 'abstract-waves':
-      return <AbstractWavesShader speed={speed} brightness={brightness} colorShift={colorShift} zoom={zoom} pulse={pulse} />;
+      return <AbstractWavesShader speed={speed} brightness={brightness} colorShift={colorShift} zoom={zoom} pulse={pulse} reveal={reveal} />;
     case 'sunset-clouds':
       return <SunsetCloudsShader speed={speed} />;
     case 'spiral-tunnel':
@@ -306,9 +307,10 @@ function playTrackForShader(shaderId: string) {
 interface BackgroundMusicProps {
   shouldPlay: boolean;
   shaderId: string;
+  volume?: number;
 }
 
-function BackgroundMusic({ shouldPlay, shaderId }: BackgroundMusicProps) {
+function BackgroundMusic({ shouldPlay, shaderId, volume = 1.0 }: BackgroundMusicProps) {
   const { camera } = useThree();
 
   useEffect(() => {
@@ -345,6 +347,13 @@ function BackgroundMusic({ shouldPlay, shaderId }: BackgroundMusicProps) {
     }
   }, [shaderId, shouldPlay]);
 
+  // Update volume for fade-in effect
+  useEffect(() => {
+    if (globalAudio.audio) {
+      globalAudio.audio.setVolume(volume * 0.3); // Base volume is 0.3, scale with intro
+    }
+  }, [volume]);
+
   return null;
 }
 
@@ -374,18 +383,158 @@ function useBPMPulse(bpm: number, enabled: boolean) {
   return pulse;
 }
 
+// Intro sequence phases and timing
+type IntroPhase = 'waiting' | 'fadeIn' | 'question' | 'questionFade' | 'reveal' | 'complete';
+
+interface IntroState {
+  phase: IntroPhase;
+  questionOpacity: number;
+  reveal: number;
+  audioVolume: number;
+}
+
+// Intro question text per shader
+const SHADER_INTRO_QUESTIONS: { [key: string]: string } = {
+  'abstract-waves': 'What is the nature of Infinity?',
+  'default': 'Welcome to the experience...'
+};
+
+function useIntroSequence(shaderId: string, started: boolean): IntroState {
+  const [state, setState] = useState<IntroState>({
+    phase: 'waiting',
+    questionOpacity: 0,
+    reveal: 0,
+    audioVolume: 0
+  });
+  const startTimeRef = useRef<number>(0);
+
+  useEffect(() => {
+    if (!started) {
+      setState({ phase: 'waiting', questionOpacity: 0, reveal: 0, audioVolume: 0 });
+      return;
+    }
+
+    startTimeRef.current = Date.now();
+
+    const animate = () => {
+      const elapsed = Date.now() - startTimeRef.current;
+
+      // Timeline:
+      // 0-3s: Audio fade in, black screen
+      // 3-6s: Question fades in
+      // 6-9s: Question visible
+      // 9-11s: Question fades out
+      // 11-18s: Lights gradually reveal
+      // 18s+: Complete
+
+      let phase: IntroPhase = 'fadeIn';
+      let questionOpacity = 0;
+      let reveal = 0;
+      let audioVolume = 0;
+
+      if (elapsed < 3000) {
+        // Phase 1: Audio fade in (0-3s)
+        phase = 'fadeIn';
+        audioVolume = Math.min(1, elapsed / 3000);
+      } else if (elapsed < 6000) {
+        // Phase 2: Question fades in (3-6s)
+        phase = 'question';
+        audioVolume = 1;
+        questionOpacity = Math.min(1, (elapsed - 3000) / 3000);
+      } else if (elapsed < 9000) {
+        // Phase 3: Question visible (6-9s)
+        phase = 'question';
+        audioVolume = 1;
+        questionOpacity = 1;
+      } else if (elapsed < 11000) {
+        // Phase 4: Question fades out (9-11s)
+        phase = 'questionFade';
+        audioVolume = 1;
+        questionOpacity = Math.max(0, 1 - (elapsed - 9000) / 2000);
+      } else if (elapsed < 18000) {
+        // Phase 5: Lights reveal (11-18s)
+        phase = 'reveal';
+        audioVolume = 1;
+        questionOpacity = 0;
+        reveal = Math.min(1, (elapsed - 11000) / 7000);
+      } else {
+        // Complete
+        phase = 'complete';
+        audioVolume = 1;
+        questionOpacity = 0;
+        reveal = 1;
+      }
+
+      setState({ phase, questionOpacity, reveal, audioVolume });
+
+      if (phase !== 'complete') {
+        requestAnimationFrame(animate);
+      }
+    };
+
+    requestAnimationFrame(animate);
+  }, [started, shaderId]);
+
+  return state;
+}
+
+// Intro overlay component for the question text
+interface IntroOverlayProps {
+  question: string;
+  opacity: number;
+}
+
+function IntroOverlay({ question, opacity }: IntroOverlayProps) {
+  if (opacity <= 0) return null;
+
+  return (
+    <div style={{
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      width: '100%',
+      height: '100%',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 100,
+      pointerEvents: 'none',
+      background: `rgba(0, 0, 0, ${Math.max(0, 0.8 - opacity * 0.3)})`
+    }}>
+      <h1 style={{
+        fontFamily: "'Space Grotesk', sans-serif",
+        fontSize: 'clamp(24px, 5vw, 48px)',
+        fontWeight: 300,
+        color: 'white',
+        textAlign: 'center',
+        opacity: opacity,
+        letterSpacing: '0.05em',
+        padding: '0 20px',
+        textShadow: '0 0 30px rgba(255, 200, 100, 0.5)',
+        transition: 'opacity 0.1s ease-out'
+      }}>
+        {question}
+      </h1>
+    </div>
+  );
+}
+
 function App() {
   const [selectedShader, setSelectedShader] = useState<string | null>(null);
   const [vrError, setVrError] = useState<string | null>(null);
-  const [musicStarted, setMusicStarted] = useState(false);
+  const [introStarted, setIntroStarted] = useState(false);
   const [speed, setSpeed] = useState(1.0);
   const [brightness, setBrightness] = useState(1.0);
   const [colorShift, setColorShift] = useState(0.0);
   const [zoom, setZoom] = useState(0.0);
   const { audioData, toggleListening } = useAudioAnalyzer();
 
-  // BPM pulse for audio-reactive effects
-  const pulse = useBPMPulse(BPM, musicStarted && selectedShader === 'abstract-waves');
+  // Intro sequence state
+  const introState = useIntroSequence(selectedShader || '', introStarted);
+  const introQuestion = SHADER_INTRO_QUESTIONS[selectedShader || ''] || SHADER_INTRO_QUESTIONS['default'];
+
+  // BPM pulse for audio-reactive effects (only after intro complete)
+  const pulse = useBPMPulse(BPM, introState.phase === 'complete' && selectedShader === 'abstract-waves');
 
   const handleSpeedChange = useCallback((delta: number) => {
     setSpeed(prev => Math.max(0.1, Math.min(3.0, prev + delta)));
@@ -416,7 +565,7 @@ function App() {
 
   const handleSelectShader = useCallback((shaderId: string) => {
     setSelectedShader(shaderId);
-    setMusicStarted(true);
+    setIntroStarted(true);
 
     // Start audio for audio-reactive shader
     if (shaderId === 'audio-reactive') {
@@ -431,6 +580,7 @@ function App() {
       session.end();
     }
     setSelectedShader(null);
+    setIntroStarted(false);
     setVrError(null);
   }, []);
 
@@ -456,6 +606,10 @@ function App() {
     return <ShaderGallery onSelectShader={handleSelectShader} />;
   }
 
+  // Determine reveal value: for shaders with intro, use introState, others get full reveal
+  const shaderReveal = selectedShader === 'abstract-waves' ? introState.reveal : 1;
+  const showControls = introState.phase === 'complete' || selectedShader !== 'abstract-waves';
+
   // Show VR experience for selected shader
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden', background: '#000' }}>
@@ -479,6 +633,7 @@ function App() {
               brightness={brightness}
               colorShift={colorShift}
               zoom={zoom}
+              reveal={shaderReveal}
             />
             <VRControllerHandler
               onBack={handleBack}
@@ -487,16 +642,32 @@ function App() {
               onColorShiftChange={handleColorShiftChange}
               onZoomChange={handleZoomChange}
             />
-            <BackgroundMusic shouldPlay={musicStarted} shaderId={selectedShader} />
+            <BackgroundMusic
+              shouldPlay={introStarted}
+              shaderId={selectedShader}
+              volume={introState.audioVolume}
+            />
           </Suspense>
         </XR>
       </Canvas>
-      <ControlButtons
-        onEnterVR={enterVR}
-        onBack={handleBack}
-        vrError={vrError}
-        shaderName={currentShader?.name || 'Shader'}
-      />
+
+      {/* Intro question overlay */}
+      {selectedShader === 'abstract-waves' && (
+        <IntroOverlay
+          question={introQuestion}
+          opacity={introState.questionOpacity}
+        />
+      )}
+
+      {/* Only show controls after intro or for non-intro shaders */}
+      {showControls && (
+        <ControlButtons
+          onEnterVR={enterVR}
+          onBack={handleBack}
+          vrError={vrError}
+          shaderName={currentShader?.name || 'Shader'}
+        />
+      )}
     </div>
   );
 }

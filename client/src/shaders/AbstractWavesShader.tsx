@@ -18,6 +18,7 @@ const fragmentShader = `
   uniform float iBrightness;   // Overall brightness
   uniform float iColorShift;   // Color palette shift
   uniform float iPulse;        // Audio-reactive pulse (0-1)
+  uniform float iReveal;       // Reveal amount (0-1) for intro animation
   varying vec2 vUv;
 
   void main() {
@@ -39,7 +40,13 @@ const fragmentShader = `
     // Pulse affects iteration intensity
     float iterMult = 1.0 + iPulse * 0.3;
 
+    // Reveal controls how many iterations contribute (gradual light appearance)
+    float maxIter = 30.0 * iReveal;
+
     for(float iter = 0.0; iter < 30.0; iter++) {
+      // Fade out contribution as we approach maxIter
+      float iterFade = smoothstep(maxIter, maxIter - 5.0, iter);
+
       i = iter;
       p = s * z + v;
       p.z -= t;
@@ -54,12 +61,13 @@ const fragmentShader = `
       d = 0.01 + 0.6 * abs(sinVal - 0.1);
       z += d;
 
-      o += (9.0 * iterMult - cos(p.y / 0.2) / (0.1 + d)) / d / z;
+      o += iterFade * (9.0 * iterMult - cos(p.y / 0.2) / (0.1 + d)) / d / z;
     }
 
-    // Color with shift and brightness
+    // Color with shift and brightness, reveal also affects overall brightness
     vec3 colorBase = vec3(9.0 + iColorShift * 3.0, 3.0 + iColorShift, 1.0);
-    o = tanh(vec4(colorBase, 0.0) * o * iBrightness / 6e3);
+    float revealBrightness = iBrightness * smoothstep(0.0, 0.3, iReveal);
+    o = tanh(vec4(colorBase, 0.0) * o * revealBrightness / 6e3);
 
     gl_FragColor = vec4(o.rgb, 1.0);
   }
@@ -71,6 +79,7 @@ interface AbstractWavesShaderProps {
   brightness?: number;
   colorShift?: number;
   pulse?: number;
+  reveal?: number;
 }
 
 export function AbstractWavesShader({
@@ -78,7 +87,8 @@ export function AbstractWavesShader({
   zoom = 0.0,
   brightness = 1.0,
   colorShift = 0.0,
-  pulse = 0.0
+  pulse = 0.0,
+  reveal = 1.0
 }: AbstractWavesShaderProps) {
   const meshRef = useRef<THREE.Mesh>(null);
 
@@ -89,7 +99,8 @@ export function AbstractWavesShader({
     iZoom: { value: zoom },
     iBrightness: { value: brightness },
     iColorShift: { value: colorShift },
-    iPulse: { value: pulse }
+    iPulse: { value: pulse },
+    iReveal: { value: reveal }
   }), []);
 
   useFrame((state) => {
@@ -101,6 +112,7 @@ export function AbstractWavesShader({
       material.uniforms.iBrightness.value = brightness;
       material.uniforms.iColorShift.value = colorShift;
       material.uniforms.iPulse.value = pulse;
+      material.uniforms.iReveal.value = reveal;
     }
   });
 
