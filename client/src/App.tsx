@@ -565,7 +565,7 @@ function App() {
 
   const handleSelectShader = useCallback((shaderId: string) => {
     setSelectedShader(shaderId);
-    setIntroStarted(true);
+    // Don't start intro yet - wait for VR entry
 
     // Start audio for audio-reactive shader
     if (shaderId === 'audio-reactive') {
@@ -590,6 +590,8 @@ function App() {
     if (supported) {
       try {
         await store.enterVR();
+        // Start intro sequence after entering VR
+        setIntroStarted(true);
       } catch (e) {
         setVrError('Failed to enter VR. Make sure your headset is connected.');
         console.error('VR entry error:', e);
@@ -606,9 +608,10 @@ function App() {
     return <ShaderGallery onSelectShader={handleSelectShader} />;
   }
 
-  // Determine reveal value: for shaders with intro, use introState, others get full reveal
-  const shaderReveal = selectedShader === 'abstract-waves' ? introState.reveal : 1;
-  const showControls = introState.phase === 'complete' || selectedShader !== 'abstract-waves';
+  // Determine reveal value: full reveal in preview mode, use intro animation only after VR entry
+  const isInIntro = introStarted && selectedShader === 'abstract-waves' && introState.phase !== 'complete';
+  const shaderReveal = isInIntro ? introState.reveal : 1;
+  const showControls = !isInIntro;
 
   // Show VR experience for selected shader
   return (
@@ -651,8 +654,8 @@ function App() {
         </XR>
       </Canvas>
 
-      {/* Intro question overlay */}
-      {selectedShader === 'abstract-waves' && (
+      {/* Intro question overlay - only show after VR entry */}
+      {isInIntro && (
         <IntroOverlay
           question={introQuestion}
           opacity={introState.questionOpacity}
