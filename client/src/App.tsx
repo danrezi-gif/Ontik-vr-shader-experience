@@ -1,5 +1,5 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Suspense, useState, useCallback, useRef, useEffect } from "react";
+import { Suspense, useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { XR, createXRStore, XROrigin } from "@react-three/xr";
 import { VRShaderScene } from "./components/VRShaderScene";
 import { ShaderGallery } from "./components/ShaderGallery";
@@ -226,6 +226,94 @@ function VRControllerHandler({ onBack, onSpeedChange, onBrightnessChange, onColo
   });
 
   return null;
+}
+
+// Glowing orbs at hand/controller positions
+function HandGlows() {
+  const leftHandRef = useRef<THREE.Mesh>(null);
+  const rightHandRef = useRef<THREE.Mesh>(null);
+  const leftGlowRef = useRef<THREE.PointLight>(null);
+  const rightGlowRef = useRef<THREE.PointLight>(null);
+
+  // Shader for glowing orb effect
+  const glowMaterial = useMemo(() => {
+    return new THREE.ShaderMaterial({
+      uniforms: {
+        time: { value: 0 },
+        color: { value: new THREE.Color(0.5, 0.7, 1.0) }
+      },
+      vertexShader: `
+        varying vec3 vNormal;
+        void main() {
+          vNormal = normalize(normalMatrix * normal);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float time;
+        uniform vec3 color;
+        varying vec3 vNormal;
+        void main() {
+          float intensity = pow(0.7 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.0);
+          float pulse = 0.8 + 0.2 * sin(time * 2.0);
+          gl_FragColor = vec4(color * intensity * pulse * 2.0, intensity * 0.8);
+        }
+      `,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      side: THREE.FrontSide,
+      depthWrite: false
+    });
+  }, []);
+
+  useFrame((state) => {
+    const session = state.gl.xr.getSession();
+    if (!session) return;
+
+    const frame = state.gl.xr.getFrame();
+    if (!frame) return;
+
+    const refSpace = state.gl.xr.getReferenceSpace();
+    if (!refSpace) return;
+
+    // Update shader time
+    glowMaterial.uniforms.time.value = state.clock.elapsedTime;
+
+    session.inputSources.forEach((inputSource) => {
+      if (!inputSource.gripSpace) return;
+
+      const pose = frame.getPose(inputSource.gripSpace, refSpace);
+      if (!pose) return;
+
+      const pos = pose.transform.position;
+      const meshRef = inputSource.handedness === 'left' ? leftHandRef : rightHandRef;
+      const lightRef = inputSource.handedness === 'left' ? leftGlowRef : rightGlowRef;
+
+      if (meshRef.current) {
+        meshRef.current.position.set(pos.x, pos.y, pos.z);
+        meshRef.current.visible = true;
+      }
+      if (lightRef.current) {
+        lightRef.current.position.set(pos.x, pos.y, pos.z);
+      }
+    });
+  });
+
+  return (
+    <>
+      {/* Left hand glow */}
+      <mesh ref={leftHandRef} visible={false} material={glowMaterial}>
+        <sphereGeometry args={[0.04, 32, 32]} />
+      </mesh>
+      <pointLight ref={leftGlowRef} color="#88aaff" intensity={0.5} distance={0.5} />
+
+      {/* Right hand glow */}
+      <mesh ref={rightHandRef} visible={false} material={glowMaterial}>
+        <sphereGeometry args={[0.04, 32, 32]} />
+      </mesh>
+      <pointLight ref={rightGlowRef} color="#88aaff" intensity={0.5} distance={0.5} />
+    </>
+  );
 }
 
 // Shader-specific audio tracks
@@ -595,6 +683,7 @@ function App() {
               onColorShiftChange={handleColorShiftChange}
               onZoomChange={handleZoomChange}
             />
+            <HandGlows />
             <BackgroundMusic shouldPlay={musicStarted} shaderId={selectedShader} />
             {/* VR Intro animator - drives brightness fade using useFrame */}
             <VRIntroAnimator
