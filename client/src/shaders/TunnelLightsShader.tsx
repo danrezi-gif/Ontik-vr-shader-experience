@@ -156,7 +156,7 @@ export function TunnelLightsShader({
       rotation={[Math.PI / 2, -headRotationY, 0]}
       position={[0, 0, 0]}
     >
-      <cylinderGeometry args={[50, 50, 1000, 64, 64, true]} />
+      <cylinderGeometry args={[50, 50, 2000, 64, 64, true]} />
       <shaderMaterial
         vertexShader={vertexShader}
         fragmentShader={fragmentShader}
