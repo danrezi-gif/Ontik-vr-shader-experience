@@ -26,7 +26,7 @@ const fragmentShader = `
     float s = 0.0;
     vec4 O = vec4(0.0);
 
-    for(float iter = 0.0; iter < 100.0; iter++) {
+    for(float iter = 0.0; iter < 50.0; iter++) {
       i = iter;
 
       // Compute raymarch sample point
