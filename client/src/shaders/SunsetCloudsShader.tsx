@@ -57,8 +57,10 @@ const fragmentShader = `
       z += d;
 
       // Coloring with sine wave using cloud depth and x-coordinate
-      // exp(s/0.1) replaced with cheap polynomial: max(0, 1 + s*10 + s*s*30)
-      float brightness = max(0.0, 1.0 + s * 10.0 + s * s * 30.0);
+      // Fade brightness at cloud boundary to prevent artifacts outside clouds
+      float cloudMask = smoothstep(-0.05, 0.15, s);
+      float sPos = max(0.0, s);
+      float brightness = cloudMask * (1.0 + sPos * 10.0 + sPos * sPos * 20.0);
       O += (cos(s / 0.07 + p.x + 0.5 * t - vec4(3.0, 4.0, 5.0, 0.0)) + 1.5) * brightness / d;
     }
 
