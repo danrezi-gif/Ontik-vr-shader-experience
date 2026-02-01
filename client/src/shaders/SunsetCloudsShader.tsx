@@ -11,6 +11,9 @@ const vertexShader = `
 `;
 
 const fragmentShader = `
+  // Quest 3 optimized version
+  precision mediump float;
+
   uniform float iTime;
   uniform vec2 iResolution;
   varying vec2 vUv;
@@ -20,34 +23,41 @@ const fragmentShader = `
     uv.x *= iResolution.x / iResolution.y;
 
     float t = iTime;
-    float i = 0.0;
     float z = 0.0;
     float d = 0.0;
     float s = 0.0;
     vec4 O = vec4(0.0);
 
-    for(float iter = 0.0; iter < 100.0; iter++) {
-      i = iter;
+    // Precompute ray direction (moved outside loop)
+    vec3 rd = normalize(vec3(uv * 2.0, -1.0));
 
-      // Compute raymarch sample point
-      vec3 p = z * normalize(vec3(uv * 2.0, -1.0));
+    // Reduced iterations: 100 -> 40 for Quest 3
+    for(int iter = 0; iter < 40; iter++) {
+      // Raymarch sample point
+      vec3 p = z * rd;
 
-      // Turbulence loop
-      for(float td = 5.0; td < 200.0; td *= 2.0) {
-        p += 0.6 * sin(p.yzx * td - 0.2 * t) / td;
-      }
+      // Reduced turbulence octaves: 6 -> 3 for Quest 3
+      // Unrolled loop for better mobile GPU performance
+      p += 0.6 * sin(p.yzx * 5.0 - 0.2 * t) / 5.0;
+      p += 0.6 * sin(p.yzx * 10.0 - 0.2 * t) / 10.0;
+      p += 0.6 * sin(p.yzx * 20.0 - 0.2 * t) / 20.0;
 
-      // Compute distance (smaller steps in clouds when s is negative)
+      // Compute distance with larger step multiplier (1.2x)
       s = 0.3 - abs(p.y);
-      d = 0.005 + max(s, -s * 0.2) / 4.0;
-      z += d;
+      d = 0.006 + max(s, -s * 0.2) * 0.3;
+      z += d * 1.2;
 
-      // Coloring with sine wave using cloud depth and x-coordinate
-      O += (cos(s / 0.07 + p.x + 0.5 * t - vec4(3.0, 4.0, 5.0, 0.0)) + 1.5) * exp(s / 0.1) / d;
+      // Coloring - simplified exp approximation
+      float expVal = clamp(1.0 + s * 10.0, 0.0, 3.0);
+      O += (cos(s * 14.3 + p.x + 0.5 * t - vec4(3.0, 4.0, 5.0, 0.0)) + 1.5) * expVal / d;
+
+      // Early exit when saturated
+      if(O.r > 5e7) break;
     }
 
-    // Tanh tonemapping
-    O = tanh(O * O / 4e8);
+    // Reinhard tonemapping (cheaper than tanh)
+    O = O * O / 4e8;
+    O = O / (1.0 + O);
 
     gl_FragColor = vec4(O.rgb, 1.0);
   }
