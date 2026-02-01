@@ -72,17 +72,28 @@ const fragmentShader = `
     vec3 colorBase = vec3(1.0, 3.0 + iColorShift, 9.0 + iColorShift * 3.0);
     o = tanh(vec4(colorBase, 0.0) * o * iBrightness / 6e3);
 
-    // Tunnel end glow - the far end of the tunnel glows bright
-    // iTunnelEnd controls how close the light source is (0 = far, 1 = reached)
-    float endDistance = 1.0 - iTunnelEnd; // 1 = far, 0 = close
-    float tunnelEndProximity = smoothstep(endDistance, endDistance - 0.3, vDepth);
     vec3 glowColor = vec3(0.7, 0.85, 1.0); // Cool blue-white glow
-    float glowIntensity = tunnelEndProximity * (1.0 + iTunnelEnd * 0.5);
-    o.rgb += glowColor * glowIntensity * iBrightness;
 
-    // Add radial glow at tunnel edges (walls glow subtly)
-    float edgeGlow = smoothstep(0.3, 0.0, abs(vUv.x - 0.5)) * 0.15;
-    o.rgb += glowColor * edgeGlow * iBrightness;
+    // === FAR END: Divine light source ===
+    // Radial glow expanding from center at far end
+    float farEndProximity = smoothstep(0.7, 1.0, vDepth);
+    // Calculate radial distance from tunnel center (vUv.x = 0.5 is center)
+    float radialDist = abs(vUv.x - 0.5) * 2.0; // 0 at center, 1 at edges
+    float divineGlow = farEndProximity * (1.0 - radialDist * 0.5); // Brighter at center
+    divineGlow *= 1.5 + iTunnelEnd * 0.5; // Intensifies as intro progresses
+    o.rgb += glowColor * divineGlow * iBrightness;
+
+    // === NEAR END: Fade to void ===
+    // Darken as we approach the near end (behind user)
+    float nearEndDarkness = smoothstep(0.3, 0.0, vDepth);
+    o.rgb *= 1.0 - nearEndDarkness * 0.8; // Fade to ~20% brightness at near end
+
+    // === UV SEAM GLOW ===
+    // Cover the seam where vUv.x wraps (at 0 and 1)
+    float seamWidth = 0.008 + 0.03 * iIntroProgress;
+    float distToSeam = min(vUv.x, 1.0 - vUv.x);
+    float seamGlow = smoothstep(seamWidth, 0.0, distToSeam) * 0.9;
+    o.rgb += glowColor * seamGlow * iBrightness;
 
     gl_FragColor = vec4(o.rgb, 1.0);
   }
@@ -145,7 +156,7 @@ export function TunnelLightsShader({
       rotation={[Math.PI / 2, -headRotationY, 0]}
       position={[0, 0, 0]}
     >
-      <cylinderGeometry args={[50, 50, 200, 64, 32, true]} />
+      <cylinderGeometry args={[50, 50, 1000, 64, 64, true]} />
       <shaderMaterial
         vertexShader={vertexShader}
         fragmentShader={fragmentShader}
