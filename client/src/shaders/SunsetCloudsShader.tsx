@@ -50,7 +50,9 @@ const fragmentShader = `
       z += d;
 
       // Coloring with sine wave using cloud depth and x-coordinate
-      O += (cos(s / 0.07 + p.x + 0.5 * t - vec4(3.0, 4.0, 5.0, 0.0)) + 1.5) * exp(s / 0.1) / d;
+      // exp(s/0.1) replaced with cheap polynomial: max(0, 1 + s*10 + s*s*30)
+      float brightness = max(0.0, 1.0 + s * 10.0 + s * s * 30.0);
+      O += (cos(s / 0.07 + p.x + 0.5 * t - vec4(3.0, 4.0, 5.0, 0.0)) + 1.5) * brightness / d;
     }
 
     // Tanh tonemapping
