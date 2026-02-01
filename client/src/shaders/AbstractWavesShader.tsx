@@ -20,6 +20,7 @@ const fragmentShader = `
   uniform float iBrightness;   // Overall brightness
   uniform float iColorShift;   // Color palette shift
   uniform float iPulse;        // Audio-reactive pulse (0-1)
+  uniform float iIntroProgress; // Intro animation progress (0-1)
   varying vec2 vUv;
   varying vec3 vPosition;
 
@@ -71,8 +72,10 @@ const fragmentShader = `
     o.rgb += glowColor * poleGlow * iBrightness;
 
     // Seam glow - cover the UV seam where texture wraps (u=0 and u=1 meet)
-    float distToSeam = min(vUv.x, 1.0 - vUv.x); // Distance to nearest edge (0 or 1)
-    float seamGlow = smoothstep(0.03, 0.0, distToSeam) * 0.9; // Glow when very close to seam
+    // Width grows as intro progresses (simulates approaching the seam)
+    float seamWidth = 0.005 + 0.04 * iIntroProgress; // Thin → wide
+    float distToSeam = min(vUv.x, 1.0 - vUv.x);
+    float seamGlow = smoothstep(seamWidth, 0.0, distToSeam) * 0.9;
     o.rgb += glowColor * seamGlow * iBrightness;
 
     gl_FragColor = vec4(o.rgb, 1.0);
@@ -107,7 +110,8 @@ export function AbstractWavesShader({
     iZoom: { value: zoom },
     iBrightness: { value: brightness },
     iColorShift: { value: colorShift },
-    iPulse: { value: pulse }
+    iPulse: { value: pulse },
+    iIntroProgress: { value: introProgress }
   }), []);
 
   useFrame((state) => {
@@ -119,6 +123,7 @@ export function AbstractWavesShader({
       material.uniforms.iBrightness.value = brightness;
       material.uniforms.iColorShift.value = colorShift;
       material.uniforms.iPulse.value = pulse;
+      material.uniforms.iIntroProgress.value = introProgress;
     }
   });
 
@@ -126,12 +131,8 @@ export function AbstractWavesShader({
   // 35 degrees = ~0.61 radians
   const tiltAngle = 35 * (Math.PI / 180);
 
-  // Sphere scale: starts large (seam far away), shrinks as user "approaches"
-  // Scale goes from 4 (distant) to 1 (normal) during intro
-  const scaleMultiplier = 4 - 3 * introProgress; // 4 → 1
-
   return (
-    <mesh ref={meshRef} scale={[-scaleMultiplier, scaleMultiplier, scaleMultiplier]} rotation={[tiltAngle, -headRotationY, 0]}>
+    <mesh ref={meshRef} scale={[-1, 1, 1]} rotation={[tiltAngle, -headRotationY, 0]}>
       <sphereGeometry args={[50, 64, 32]} />
       <shaderMaterial
         vertexShader={vertexShader}
