@@ -11,8 +11,8 @@ const vertexShader = `
 `;
 
 const fragmentShader = `
-  // Quest 3 optimized version
-  precision mediump float;
+  // Quest 3 Adreno GPU safe version
+  precision highp float;
 
   uniform float iTime;
   uniform vec2 iResolution;
@@ -28,36 +28,37 @@ const fragmentShader = `
     float s = 0.0;
     vec4 O = vec4(0.0);
 
-    // Precompute ray direction (moved outside loop)
+    // Precompute ray direction
     vec3 rd = normalize(vec3(uv * 2.0, -1.0));
 
-    // Reduced iterations: 100 -> 40 for Quest 3
-    for(int iter = 0; iter < 40; iter++) {
+    // Float loop counter for Adreno compatibility
+    for(float iter = 0.0; iter < 40.0; iter += 1.0) {
       // Raymarch sample point
       vec3 p = z * rd;
 
-      // Reduced turbulence octaves: 6 -> 3 for Quest 3
-      // Unrolled loop for better mobile GPU performance
-      p += 0.6 * sin(p.yzx * 5.0 - 0.2 * t) / 5.0;
-      p += 0.6 * sin(p.yzx * 10.0 - 0.2 * t) / 10.0;
-      p += 0.6 * sin(p.yzx * 20.0 - 0.2 * t) / 20.0;
+      // Reduced turbulence octaves: 3 for Quest 3
+      p += 0.12 * sin(p.yzx * 5.0 - 0.2 * t);
+      p += 0.06 * sin(p.yzx * 10.0 - 0.2 * t);
+      p += 0.03 * sin(p.yzx * 20.0 - 0.2 * t);
 
-      // Compute distance with larger step multiplier (1.2x)
+      // Compute distance - ensure no division by zero
       s = 0.3 - abs(p.y);
-      d = 0.006 + max(s, -s * 0.2) * 0.3;
+      d = max(0.006 + max(s, -s * 0.2) * 0.3, 0.001);
       z += d * 1.2;
 
-      // Coloring - simplified exp approximation
-      float expVal = clamp(1.0 + s * 10.0, 0.0, 3.0);
-      O += (cos(s * 14.3 + p.x + 0.5 * t - vec4(3.0, 4.0, 5.0, 0.0)) + 1.5) * expVal / d;
+      // Coloring with safe division
+      float expVal = clamp(1.0 + s * 10.0, 0.1, 3.0);
+      vec4 col = (cos(s * 14.3 + p.x + 0.5 * t - vec4(3.0, 4.0, 5.0, 0.0)) + 1.5) * expVal;
+      O += col / max(d, 0.001);
 
-      // Early exit when saturated
-      if(O.r > 5e7) break;
+      // Clamp accumulator to prevent overflow (no break needed)
+      O = min(O, vec4(1e8));
     }
 
-    // Reinhard tonemapping (cheaper than tanh)
+    // Reinhard tonemapping
     O = O * O / 4e8;
     O = O / (1.0 + O);
+    O = clamp(O, 0.0, 1.0);
 
     gl_FragColor = vec4(O.rgb, 1.0);
   }
