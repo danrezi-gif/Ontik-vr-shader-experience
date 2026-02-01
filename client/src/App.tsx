@@ -460,8 +460,8 @@ function App() {
   const introBrightness = 0.1 + 0.9 * introProgress; // 0.1 → 1.0
   const brightness = isInIntro ? introBrightness * baseBrightness : baseBrightness;
 
-  // BPM pulse for audio-reactive effects (only after intro)
-  const pulse = useBPMPulse(BPM, musicStarted && selectedShader === 'abstract-waves' && introComplete);
+  // BPM pulse disabled for now
+  const pulse = 0;
 
   // Callbacks for intro animator
   const handleIntroProgress = useCallback((progress: number) => {
