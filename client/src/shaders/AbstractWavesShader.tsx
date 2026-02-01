@@ -70,12 +70,9 @@ const fragmentShader = `
     vec3 glowColor = vec3(1.0, 0.9, 0.7); // Warm white glow
     o.rgb += glowColor * poleGlow * iBrightness;
 
-    // Seam glow - vertical line of light at the "far end" (tunnel effect)
-    // Seam is where x ≈ 0 and z < 0 (back of sphere)
-    float seamProximity = 1.0 - abs(vPosition.x); // Close to 1 when x near 0
-    float atBack = smoothstep(0.0, -0.3, vPosition.z); // 1 when z is negative
-    float seamGlow = seamProximity * atBack;
-    seamGlow = smoothstep(0.85, 1.0, seamGlow) * 0.9; // Sharp falloff
+    // Seam glow - cover the UV seam where texture wraps (u=0 and u=1 meet)
+    float distToSeam = min(vUv.x, 1.0 - vUv.x); // Distance to nearest edge (0 or 1)
+    float seamGlow = smoothstep(0.03, 0.0, distToSeam) * 0.9; // Glow when very close to seam
     o.rgb += glowColor * seamGlow * iBrightness;
 
     gl_FragColor = vec4(o.rgb, 1.0);
