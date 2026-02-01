@@ -11,9 +11,6 @@ const vertexShader = `
 `;
 
 const fragmentShader = `
-  // Quest 3 Adreno GPU safe version
-  precision highp float;
-
   uniform float iTime;
   uniform vec2 iResolution;
   varying vec2 vUv;
@@ -28,37 +25,27 @@ const fragmentShader = `
     float s = 0.0;
     vec4 O = vec4(0.0);
 
-    // Precompute ray direction
     vec3 rd = normalize(vec3(uv * 2.0, -1.0));
 
-    // Float loop counter for Adreno compatibility
-    for(float iter = 0.0; iter < 40.0; iter += 1.0) {
-      // Raymarch sample point
+    for(float i = 0.0; i < 40.0; i += 1.0) {
       vec3 p = z * rd;
 
-      // Reduced turbulence octaves: 3 for Quest 3
+      // Simplified turbulence - 3 octaves
       p += 0.12 * sin(p.yzx * 5.0 - 0.2 * t);
       p += 0.06 * sin(p.yzx * 10.0 - 0.2 * t);
       p += 0.03 * sin(p.yzx * 20.0 - 0.2 * t);
 
-      // Compute distance - ensure no division by zero
       s = 0.3 - abs(p.y);
-      d = max(0.006 + max(s, -s * 0.2) * 0.3, 0.001);
-      z += d * 1.2;
+      d = 0.01 + max(s, -s * 0.2) * 0.25;
+      z += d;
 
-      // Coloring with safe division
-      float expVal = clamp(1.0 + s * 10.0, 0.1, 3.0);
-      vec4 col = (cos(s * 14.3 + p.x + 0.5 * t - vec4(3.0, 4.0, 5.0, 0.0)) + 1.5) * expVal;
-      O += col / max(d, 0.001);
-
-      // Clamp accumulator to prevent overflow (no break needed)
-      O = min(O, vec4(1e8));
+      // Simpler accumulation like Abstract Waves
+      float brightness = (1.0 + s * 8.0) / (d * 100.0);
+      O += (cos(s * 14.0 + p.x + 0.5 * t - vec4(3.0, 4.0, 5.0, 0.0)) + 1.5) * brightness;
     }
 
-    // Reinhard tonemapping
-    O = O * O / 4e8;
-    O = O / (1.0 + O);
-    O = clamp(O, 0.0, 1.0);
+    // Use tanh like working shaders, with smaller constant
+    O = tanh(O / 2e3);
 
     gl_FragColor = vec4(O.rgb, 1.0);
   }
