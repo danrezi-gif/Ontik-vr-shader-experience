@@ -5,9 +5,13 @@ import * as THREE from 'three';
 const vertexShader = `
   varying vec2 vUv;
   varying vec3 vPosition;
+  varying float vDepth;
+
   void main() {
     vUv = uv;
     vPosition = normalize(position);
+    // Pass normalized depth (0 = near end, 1 = far end)
+    vDepth = uv.y;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
@@ -15,17 +19,20 @@ const vertexShader = `
 const fragmentShader = `
   uniform float iTime;
   uniform vec2 iResolution;
-  uniform float iSpeed;        // Animation speed
-  uniform float iZoom;         // Camera zoom
-  uniform float iBrightness;   // Overall brightness
-  uniform float iColorShift;   // Color palette shift
-  uniform float iPulse;        // Audio-reactive pulse (0-1)
-  uniform float iIntroProgress; // Intro animation progress (0-1)
+  uniform float iSpeed;
+  uniform float iZoom;
+  uniform float iBrightness;
+  uniform float iColorShift;
+  uniform float iPulse;
+  uniform float iIntroProgress;
+  uniform float iTunnelEnd;
   varying vec2 vUv;
   varying vec3 vPosition;
+  varying float vDepth;
 
   void main() {
-    vec2 uv = (vUv - 0.5) * 2.0;
+    // Map cylinder UV to create tunnel effect
+    vec2 uv = vec2(vUv.x * 2.0 - 1.0, vDepth * 2.0 - 1.0);
     uv.x *= iResolution.x / iResolution.y;
 
     float t = iTime * iSpeed;
@@ -61,46 +68,45 @@ const fragmentShader = `
       o += (9.0 * iterMult - cos(p.y / 0.2) / (0.1 + d)) / d / z;
     }
 
-    // Color with shift and brightness
-    vec3 colorBase = vec3(9.0 + iColorShift * 3.0, 3.0 + iColorShift, 1.0);
+    // Color with shift and brightness - blue palette
+    vec3 colorBase = vec3(1.0, 3.0 + iColorShift, 9.0 + iColorShift * 3.0);
     o = tanh(vec4(colorBase, 0.0) * o * iBrightness / 6e3);
 
-    // Pole glow - brighten near top and bottom poles
-    float poleProximity = abs(vPosition.y);
-    float poleGlow = smoothstep(0.7, 1.0, poleProximity) * 0.8;
-    vec3 glowColor = vec3(1.0, 0.9, 0.7); // Warm white glow
-    o.rgb += glowColor * poleGlow * iBrightness;
+    // Tunnel end glow - the far end of the tunnel glows bright
+    // iTunnelEnd controls how close the light source is (0 = far, 1 = reached)
+    float endDistance = 1.0 - iTunnelEnd; // 1 = far, 0 = close
+    float tunnelEndProximity = smoothstep(endDistance, endDistance - 0.3, vDepth);
+    vec3 glowColor = vec3(0.7, 0.85, 1.0); // Cool blue-white glow
+    float glowIntensity = tunnelEndProximity * (1.0 + iTunnelEnd * 0.5);
+    o.rgb += glowColor * glowIntensity * iBrightness;
 
-    // Seam glow - cover the UV seam where texture wraps (u=0 and u=1 meet)
-    // Width grows as intro progresses (simulates approaching the seam)
-    float seamWidth = 0.005 + 0.04 * iIntroProgress; // Thin → wide
-    float distToSeam = min(vUv.x, 1.0 - vUv.x);
-    float seamGlow = smoothstep(seamWidth, 0.0, distToSeam) * 0.9;
-    o.rgb += glowColor * seamGlow * iBrightness;
+    // Add radial glow at tunnel edges (walls glow subtly)
+    float edgeGlow = smoothstep(0.3, 0.0, abs(vUv.x - 0.5)) * 0.15;
+    o.rgb += glowColor * edgeGlow * iBrightness;
 
     gl_FragColor = vec4(o.rgb, 1.0);
   }
 `;
 
-interface AbstractWavesShaderProps {
+interface TunnelLightsShaderProps {
   speed?: number;
   zoom?: number;
   brightness?: number;
   colorShift?: number;
   pulse?: number;
   headRotationY?: number;
-  introProgress?: number; // 0-1, controls approach animation
+  introProgress?: number;
 }
 
-export function AbstractWavesShader({
+export function TunnelLightsShader({
   speed = 1.0,
   zoom = 0.0,
   brightness = 1.0,
   colorShift = 0.0,
   pulse = 0.0,
   headRotationY = 0,
-  introProgress = 1
-}: AbstractWavesShaderProps) {
+  introProgress = 0
+}: TunnelLightsShaderProps) {
   const meshRef = useRef<THREE.Mesh>(null);
 
   const uniforms = useMemo(() => ({
@@ -111,7 +117,8 @@ export function AbstractWavesShader({
     iBrightness: { value: brightness },
     iColorShift: { value: colorShift },
     iPulse: { value: pulse },
-    iIntroProgress: { value: introProgress }
+    iIntroProgress: { value: introProgress },
+    iTunnelEnd: { value: introProgress }
   }), []);
 
   useFrame((state) => {
@@ -124,16 +131,21 @@ export function AbstractWavesShader({
       material.uniforms.iColorShift.value = colorShift;
       material.uniforms.iPulse.value = pulse;
       material.uniforms.iIntroProgress.value = introProgress;
+      // Tunnel end approaches as intro progresses
+      material.uniforms.iTunnelEnd.value = introProgress;
     }
   });
 
-  // Tilt sphere forward so top pole is visible in upper third of view
-  // 35 degrees = ~0.61 radians
-  const tiltAngle = 35 * (Math.PI / 180);
-
+  // Cylinder: radiusTop, radiusBottom, height, radialSegments, heightSegments, openEnded
+  // User is inside the cylinder looking toward the far end
+  // Rotate so the cylinder extends forward (Z-axis) from user's POV
   return (
-    <mesh ref={meshRef} scale={[-1, 1, 1]} rotation={[tiltAngle, -headRotationY, 0]}>
-      <sphereGeometry args={[50, 64, 32]} />
+    <mesh
+      ref={meshRef}
+      rotation={[Math.PI / 2, -headRotationY, 0]}
+      position={[0, 0, 0]}
+    >
+      <cylinderGeometry args={[50, 50, 200, 64, 32, true]} />
       <shaderMaterial
         vertexShader={vertexShader}
         fragmentShader={fragmentShader}
