@@ -4,8 +4,10 @@ import * as THREE from 'three';
 
 const vertexShader = `
   varying vec2 vUv;
+  varying vec3 vPosition;
   void main() {
     vUv = uv;
+    vPosition = normalize(position);
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
@@ -19,6 +21,7 @@ const fragmentShader = `
   uniform float iColorShift;   // Color palette shift
   uniform float iPulse;        // Audio-reactive pulse (0-1)
   varying vec2 vUv;
+  varying vec3 vPosition;
 
   void main() {
     vec2 uv = (vUv - 0.5) * 2.0;
@@ -60,6 +63,12 @@ const fragmentShader = `
     // Color with shift and brightness
     vec3 colorBase = vec3(9.0 + iColorShift * 3.0, 3.0 + iColorShift, 1.0);
     o = tanh(vec4(colorBase, 0.0) * o * iBrightness / 6e3);
+
+    // Pole glow - brighten near top and bottom poles
+    float poleProximity = abs(vPosition.y);
+    float poleGlow = smoothstep(0.7, 1.0, poleProximity) * 0.8;
+    vec3 glowColor = vec3(1.0, 0.9, 0.7); // Warm white glow
+    o.rgb += glowColor * poleGlow * iBrightness;
 
     gl_FragColor = vec4(o.rgb, 1.0);
   }
@@ -104,8 +113,12 @@ export function AbstractWavesShader({
     }
   });
 
+  // Tilt sphere forward so top pole is visible in upper third of view
+  // 35 degrees = ~0.61 radians
+  const tiltAngle = 35 * (Math.PI / 180);
+
   return (
-    <mesh ref={meshRef} scale={[-1, 1, 1]}>
+    <mesh ref={meshRef} scale={[-1, 1, 1]} rotation={[tiltAngle, 0, 0]}>
       <sphereGeometry args={[50, 64, 32]} />
       <shaderMaterial
         vertexShader={vertexShader}
