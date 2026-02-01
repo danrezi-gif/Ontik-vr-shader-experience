@@ -20,32 +20,34 @@ const fragmentShader = `
     uv.x *= iResolution.x / iResolution.y;
 
     float t = iTime;
+    float i = 0.0;
     float z = 0.0;
     float d = 0.0;
     float s = 0.0;
     vec4 O = vec4(0.0);
 
-    vec3 rd = normalize(vec3(uv * 2.0, -1.0));
+    for(float iter = 0.0; iter < 50.0; iter++) {
+      i = iter;
 
-    for(float i = 0.0; i < 40.0; i += 1.0) {
-      vec3 p = z * rd;
+      // Compute raymarch sample point
+      vec3 p = z * normalize(vec3(uv * 2.0, -1.0));
 
-      // Simplified turbulence - 3 octaves
-      p += 0.12 * sin(p.yzx * 5.0 - 0.2 * t);
-      p += 0.06 * sin(p.yzx * 10.0 - 0.2 * t);
-      p += 0.03 * sin(p.yzx * 20.0 - 0.2 * t);
+      // Turbulence loop
+      for(float td = 5.0; td < 200.0; td *= 2.0) {
+        p += 0.6 * sin(p.yzx * td - 0.2 * t) / td;
+      }
 
+      // Compute distance (smaller steps in clouds when s is negative)
       s = 0.3 - abs(p.y);
-      d = 0.01 + max(s, -s * 0.2) * 0.25;
+      d = 0.005 + max(s, -s * 0.2) / 4.0;
       z += d;
 
-      // Simpler accumulation like Abstract Waves
-      float brightness = (1.0 + s * 8.0) / (d * 100.0);
-      O += (cos(s * 14.0 + p.x + 0.5 * t - vec4(3.0, 4.0, 5.0, 0.0)) + 1.5) * brightness;
+      // Coloring with sine wave using cloud depth and x-coordinate
+      O += (cos(s / 0.07 + p.x + 0.5 * t - vec4(3.0, 4.0, 5.0, 0.0)) + 1.5) * exp(s / 0.1) / d;
     }
 
-    // Use tanh like working shaders, with smaller constant
-    O = tanh(O / 2e3);
+    // Tanh tonemapping
+    O = tanh(O * O / 4e8);
 
     gl_FragColor = vec4(O.rgb, 1.0);
   }
