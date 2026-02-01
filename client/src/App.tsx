@@ -24,17 +24,16 @@ interface ShaderRendererProps {
   brightness: number;
   colorShift: number;
   zoom: number;
-  reveal: number;
 }
 
-function ShaderRenderer({ shaderId, audioData, speed, pulse, brightness, colorShift, zoom, reveal }: ShaderRendererProps) {
+function ShaderRenderer({ shaderId, audioData, speed, pulse, brightness, colorShift, zoom }: ShaderRendererProps) {
   switch (shaderId) {
     case 'audio-reactive':
       return <VRShaderScene audioData={audioData} paletteIndex={0} />;
     case 'morphing-blobs':
       return <MorphingBlobsShader />;
     case 'abstract-waves':
-      return <AbstractWavesShader speed={speed} brightness={brightness} colorShift={colorShift} zoom={zoom} pulse={pulse} reveal={reveal} />;
+      return <AbstractWavesShader speed={speed} brightness={brightness} colorShift={colorShift} zoom={zoom} pulse={pulse} />;
     case 'sunset-clouds':
       return <SunsetCloudsShader speed={speed} />;
     case 'spiral-tunnel':
@@ -304,42 +303,12 @@ function playTrackForShader(shaderId: string) {
   }
 }
 
-// Component to capture initial head orientation when VR starts
-interface OrientationCaptureProps {
-  onCapture: (rotation: number) => void;
-  shouldCapture: boolean;
-}
-
-function OrientationCapture({ onCapture, shouldCapture }: OrientationCaptureProps) {
-  const { camera } = useThree();
-  const captured = useRef(false);
-
-  useFrame(() => {
-    if (shouldCapture && !captured.current) {
-      // Get the camera's Y rotation (horizontal look direction)
-      const euler = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ');
-      onCapture(euler.y);
-      captured.current = true;
-    }
-  });
-
-  // Reset capture flag when shouldCapture changes to false
-  useEffect(() => {
-    if (!shouldCapture) {
-      captured.current = false;
-    }
-  }, [shouldCapture]);
-
-  return null;
-}
-
 interface BackgroundMusicProps {
   shouldPlay: boolean;
   shaderId: string;
-  volume?: number;
 }
 
-function BackgroundMusic({ shouldPlay, shaderId, volume = 1.0 }: BackgroundMusicProps) {
+function BackgroundMusic({ shouldPlay, shaderId }: BackgroundMusicProps) {
   const { camera } = useThree();
 
   useEffect(() => {
@@ -376,13 +345,6 @@ function BackgroundMusic({ shouldPlay, shaderId, volume = 1.0 }: BackgroundMusic
     }
   }, [shaderId, shouldPlay]);
 
-  // Update volume for fade-in effect
-  useEffect(() => {
-    if (globalAudio.audio) {
-      globalAudio.audio.setVolume(volume * 0.3); // Base volume is 0.3, scale with intro
-    }
-  }, [volume]);
-
   return null;
 }
 
@@ -412,245 +374,18 @@ function useBPMPulse(bpm: number, enabled: boolean) {
   return pulse;
 }
 
-// Intro sequence phases and timing
-type IntroPhase = 'waiting' | 'fadeIn' | 'question' | 'questionFade' | 'reveal' | 'complete';
-
-interface IntroState {
-  phase: IntroPhase;
-  questionOpacity: number;
-  reveal: number;
-  audioVolume: number;
-}
-
-// Intro question text per shader
-const SHADER_INTRO_QUESTIONS: { [key: string]: string } = {
-  'abstract-waves': 'What is the nature of Infinity?',
-  'default': 'Welcome to the experience...'
-};
-
-function useIntroSequence(shaderId: string, started: boolean): IntroState {
-  const [state, setState] = useState<IntroState>({
-    phase: 'waiting',
-    questionOpacity: 0,
-    reveal: 0,
-    audioVolume: 0
-  });
-  const startTimeRef = useRef<number>(0);
-
-  useEffect(() => {
-    if (!started) {
-      setState({ phase: 'waiting', questionOpacity: 0, reveal: 0, audioVolume: 0 });
-      return;
-    }
-
-    startTimeRef.current = Date.now();
-
-    const animate = () => {
-      const elapsed = Date.now() - startTimeRef.current;
-
-      // Shorter timeline:
-      // 0-2s: Audio fade in, darkness with subtle glow
-      // 2-4s: Question fades in
-      // 4-6s: Question visible
-      // 6-7s: Question fades out
-      // 7-14s: Lights gradually reveal
-      // 14s+: Complete
-
-      let phase: IntroPhase = 'fadeIn';
-      let questionOpacity = 0;
-      let reveal = 0;
-      let audioVolume = 0;
-
-      if (elapsed < 2000) {
-        // Phase 1: Audio fade in (0-2s) - slight reveal for ambient glow
-        phase = 'fadeIn';
-        audioVolume = Math.min(1, elapsed / 2000);
-        reveal = 0.05; // Minimal glow so it's not completely black
-      } else if (elapsed < 4000) {
-        // Phase 2: Question fades in (2-4s)
-        phase = 'question';
-        audioVolume = 1;
-        questionOpacity = Math.min(1, (elapsed - 2000) / 2000);
-        reveal = 0.05;
-      } else if (elapsed < 6000) {
-        // Phase 3: Question visible (4-6s)
-        phase = 'question';
-        audioVolume = 1;
-        questionOpacity = 1;
-        reveal = 0.05;
-      } else if (elapsed < 7000) {
-        // Phase 4: Question fades out (6-7s)
-        phase = 'questionFade';
-        audioVolume = 1;
-        questionOpacity = Math.max(0, 1 - (elapsed - 6000) / 1000);
-        reveal = 0.05;
-      } else if (elapsed < 14000) {
-        // Phase 5: Lights reveal (7-14s)
-        phase = 'reveal';
-        audioVolume = 1;
-        questionOpacity = 0;
-        reveal = 0.05 + 0.95 * Math.min(1, (elapsed - 7000) / 7000);
-      } else {
-        // Complete
-        phase = 'complete';
-        audioVolume = 1;
-        questionOpacity = 0;
-        reveal = 1;
-      }
-
-      setState({ phase, questionOpacity, reveal, audioVolume });
-
-      if (phase !== 'complete') {
-        requestAnimationFrame(animate);
-      }
-    };
-
-    requestAnimationFrame(animate);
-  }, [started, shaderId]);
-
-  return state;
-}
-
-// 3D Text component for VR intro question - uses canvas texture for compatibility
-interface IntroText3DProps {
-  question: string;
-  opacity: number;
-  initialRotation: number;
-}
-
-function IntroText3D({ question, opacity, initialRotation }: IntroText3DProps) {
-  const meshRef = useRef<THREE.Mesh>(null);
-  const textureRef = useRef<THREE.CanvasTexture | null>(null);
-
-  // Create canvas texture for text
-  useEffect(() => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 1024;
-    canvas.height = 256;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.fillStyle = 'transparent';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = 'white';
-      ctx.font = '300 48px "Space Grotesk", Arial, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-
-      // Word wrap
-      const words = question.split(' ');
-      let lines: string[] = [];
-      let currentLine = '';
-      const maxWidth = 900;
-
-      for (const word of words) {
-        const testLine = currentLine ? `${currentLine} ${word}` : word;
-        const metrics = ctx.measureText(testLine);
-        if (metrics.width > maxWidth && currentLine) {
-          lines.push(currentLine);
-          currentLine = word;
-        } else {
-          currentLine = testLine;
-        }
-      }
-      if (currentLine) lines.push(currentLine);
-
-      const lineHeight = 60;
-      const startY = canvas.height / 2 - ((lines.length - 1) * lineHeight) / 2;
-      lines.forEach((line, i) => {
-        ctx.fillText(line, canvas.width / 2, startY + i * lineHeight);
-      });
-
-      textureRef.current = new THREE.CanvasTexture(canvas);
-      textureRef.current.needsUpdate = true;
-    }
-  }, [question]);
-
-  // Update opacity
-  useFrame(() => {
-    if (meshRef.current) {
-      const material = meshRef.current.material as THREE.MeshBasicMaterial;
-      if (material) {
-        material.opacity = opacity;
-      }
-    }
-  });
-
-  if (opacity <= 0 || !textureRef.current) return null;
-
-  return (
-    <group rotation={[0, initialRotation, 0]}>
-      <mesh ref={meshRef} position={[0, 0, -4]}>
-        <planeGeometry args={[4, 1]} />
-        <meshBasicMaterial
-          map={textureRef.current}
-          transparent
-          opacity={opacity}
-          depthWrite={false}
-          side={THREE.DoubleSide}
-        />
-      </mesh>
-    </group>
-  );
-}
-
-// Intro overlay component for the question text (fallback for non-VR)
-interface IntroOverlayProps {
-  question: string;
-  opacity: number;
-}
-
-function IntroOverlay({ question, opacity }: IntroOverlayProps) {
-  if (opacity <= 0) return null;
-
-  return (
-    <div style={{
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      width: '100%',
-      height: '100%',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 100,
-      pointerEvents: 'none',
-      background: `rgba(0, 0, 0, ${Math.max(0, 0.8 - opacity * 0.3)})`
-    }}>
-      <h1 style={{
-        fontFamily: "'Space Grotesk', sans-serif",
-        fontSize: 'clamp(24px, 5vw, 48px)',
-        fontWeight: 300,
-        color: 'white',
-        textAlign: 'center',
-        opacity: opacity,
-        letterSpacing: '0.05em',
-        padding: '0 20px',
-        textShadow: '0 0 30px rgba(255, 200, 100, 0.5)',
-        transition: 'opacity 0.1s ease-out'
-      }}>
-        {question}
-      </h1>
-    </div>
-  );
-}
-
 function App() {
   const [selectedShader, setSelectedShader] = useState<string | null>(null);
   const [vrError, setVrError] = useState<string | null>(null);
-  const [introStarted, setIntroStarted] = useState(false);
-  const [initialRotation, setInitialRotation] = useState(0);
+  const [musicStarted, setMusicStarted] = useState(false);
   const [speed, setSpeed] = useState(1.0);
   const [brightness, setBrightness] = useState(1.0);
   const [colorShift, setColorShift] = useState(0.0);
   const [zoom, setZoom] = useState(0.0);
   const { audioData, toggleListening } = useAudioAnalyzer();
 
-  // Intro sequence state
-  const introState = useIntroSequence(selectedShader || '', introStarted);
-  const introQuestion = SHADER_INTRO_QUESTIONS[selectedShader || ''] || SHADER_INTRO_QUESTIONS['default'];
-
-  // BPM pulse for audio-reactive effects (only after intro complete)
-  const pulse = useBPMPulse(BPM, introState.phase === 'complete' && selectedShader === 'abstract-waves');
+  // BPM pulse for audio-reactive effects
+  const pulse = useBPMPulse(BPM, musicStarted && selectedShader === 'abstract-waves');
 
   const handleSpeedChange = useCallback((delta: number) => {
     setSpeed(prev => Math.max(0.1, Math.min(3.0, prev + delta)));
@@ -681,7 +416,7 @@ function App() {
 
   const handleSelectShader = useCallback((shaderId: string) => {
     setSelectedShader(shaderId);
-    // Don't start intro yet - wait for VR entry
+    setMusicStarted(true);
 
     // Start audio for audio-reactive shader
     if (shaderId === 'audio-reactive') {
@@ -696,8 +431,6 @@ function App() {
       session.end();
     }
     setSelectedShader(null);
-    setIntroStarted(false);
-    setInitialRotation(0);
     setVrError(null);
   }, []);
 
@@ -707,8 +440,6 @@ function App() {
     if (supported) {
       try {
         await store.enterVR();
-        // Start intro sequence after entering VR
-        setIntroStarted(true);
       } catch (e) {
         setVrError('Failed to enter VR. Make sure your headset is connected.');
         console.error('VR entry error:', e);
@@ -725,16 +456,6 @@ function App() {
     return <ShaderGallery onSelectShader={handleSelectShader} />;
   }
 
-  // Determine reveal value: full reveal in preview mode, use intro animation only after VR entry
-  const isInIntro = introStarted && selectedShader === 'abstract-waves' && introState.phase !== 'complete';
-  const shaderReveal = isInIntro ? introState.reveal : 1;
-  const showControls = !isInIntro;
-
-  // Callback to capture initial orientation
-  const handleOrientationCapture = useCallback((rotation: number) => {
-    setInitialRotation(rotation);
-  }, []);
-
   // Show VR experience for selected shader
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden', background: '#000' }}>
@@ -750,35 +471,15 @@ function App() {
         <XR store={store}>
           <XROrigin position={[0, 0, 0]} />
           <Suspense fallback={null}>
-            {/* Capture initial head orientation when VR starts */}
-            <OrientationCapture
-              onCapture={handleOrientationCapture}
-              shouldCapture={introStarted}
+            <ShaderRenderer
+              shaderId={selectedShader}
+              audioData={audioData}
+              speed={speed}
+              pulse={pulse}
+              brightness={brightness}
+              colorShift={colorShift}
+              zoom={zoom}
             />
-
-            {/* Rotate entire experience to align with initial view direction */}
-            <group rotation={[0, -initialRotation, 0]}>
-              <ShaderRenderer
-                shaderId={selectedShader}
-                audioData={audioData}
-                speed={speed}
-                pulse={pulse}
-                brightness={brightness}
-                colorShift={colorShift}
-                zoom={zoom}
-                reveal={shaderReveal}
-              />
-            </group>
-
-            {/* 3D intro text - visible in VR headset */}
-            {isInIntro && (
-              <IntroText3D
-                question={introQuestion}
-                opacity={introState.questionOpacity}
-                initialRotation={-initialRotation}
-              />
-            )}
-
             <VRControllerHandler
               onBack={handleBack}
               onSpeedChange={handleSpeedChange}
@@ -786,32 +487,16 @@ function App() {
               onColorShiftChange={handleColorShiftChange}
               onZoomChange={handleZoomChange}
             />
-            <BackgroundMusic
-              shouldPlay={introStarted}
-              shaderId={selectedShader}
-              volume={introState.audioVolume}
-            />
+            <BackgroundMusic shouldPlay={musicStarted} shaderId={selectedShader} />
           </Suspense>
         </XR>
       </Canvas>
-
-      {/* Intro question overlay - fallback for non-VR viewing */}
-      {isInIntro && (
-        <IntroOverlay
-          question={introQuestion}
-          opacity={introState.questionOpacity}
-        />
-      )}
-
-      {/* Only show controls after intro or for non-intro shaders */}
-      {showControls && (
-        <ControlButtons
-          onEnterVR={enterVR}
-          onBack={handleBack}
-          vrError={vrError}
-          shaderName={currentShader?.name || 'Shader'}
-        />
-      )}
+      <ControlButtons
+        onEnterVR={enterVR}
+        onBack={handleBack}
+        vrError={vrError}
+        shaderName={currentShader?.name || 'Shader'}
+      />
     </div>
   );
 }
