@@ -56,20 +56,22 @@ const fragmentShader = `
       d = 0.005 + max(s, -s * 0.2) / 4.0;
       z += d;
 
-      // Coloring with sine wave using cloud depth and x-coordinate
-      // Original brightness formula (exp(s/0.1) approximation)
-      float brightness = max(0.0, 1.0 + s * 10.0 + s * s * 30.0);
-      O += (cos(s / 0.07 + p.x + 0.5 * t - vec4(3.0, 4.0, 5.0, 0.0)) + 1.5) * brightness / d;
+      // Coloring - clamp brightness to reduce white artifacts
+      float brightness = max(0.0, min(8.0, 1.0 + s * 10.0 + s * s * 30.0));
+      // Ensure d doesn't get too small (prevents bright spots)
+      float safeD = max(0.01, d);
+      O += (cos(s / 0.07 + p.x + 0.5 * t - vec4(3.0, 4.0, 5.0, 0.0)) + 1.5) * brightness / safeD;
     }
 
-    // Tanh tonemapping
+    // Tanh tonemapping with extra clamping
+    O = clamp(O, 0.0, 1e9);
     O = tanh(O * O / 4e8);
 
     // Fog to hide seams using actual sphere position (works with VR head tracking)
-    // Fade at poles (top/bottom of sphere) - less aggressive
+    // Fade at poles (top/bottom of sphere)
     float polesFade = 1.0 - smoothstep(0.85, 0.98, abs(vSphereDir.y));
-    // Fade at UV seam (occurs at -x due to scale flip)
-    float seamFade = 1.0 - smoothstep(0.7, 0.95, -vSphereDir.x);
+    // Fade at UV seam (try positive x - original geometry seam location)
+    float seamFade = 1.0 - smoothstep(0.7, 0.95, vSphereDir.x);
     // Combine fades
     float fog = polesFade * seamFade;
 
