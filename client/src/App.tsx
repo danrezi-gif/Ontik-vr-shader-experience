@@ -8,6 +8,7 @@ import { AbstractWavesShader } from "./shaders/AbstractWavesShader";
 import { SunsetCloudsShader } from "./shaders/SunsetCloudsShader";
 import { SpiralTunnelShader } from "./shaders/SpiralTunnelShader";
 import { BokehLightsShader } from "./shaders/BokehLightsShader";
+import { TunnelLightsShader } from "./shaders/TunnelLightsShader";
 import { useAudioAnalyzer } from "./hooks/useAudioAnalyzer";
 import { SHADERS } from "./shaders";
 import "@fontsource/inter";
@@ -36,6 +37,8 @@ function ShaderRenderer({ shaderId, audioData, speed, pulse, brightness, colorSh
       return <MorphingBlobsShader />;
     case 'abstract-waves':
       return <AbstractWavesShader speed={speed} brightness={brightness} colorShift={colorShift} zoom={zoom} pulse={pulse} headRotationY={headRotationY} introProgress={introProgress} />;
+    case 'tunnel-lights':
+      return <TunnelLightsShader speed={speed} brightness={brightness} colorShift={colorShift} zoom={zoom} pulse={pulse} headRotationY={headRotationY} introProgress={introProgress} />;
     case 'sunset-clouds':
       return <SunsetCloudsShader speed={speed} />;
     case 'spiral-tunnel':
@@ -228,6 +231,7 @@ function VRControllerHandler({ onBack, onSpeedChange, onBrightnessChange, onColo
 // Shader-specific audio tracks
 const SHADER_AUDIO: { [key: string]: string } = {
   'abstract-waves': 'The Birth of the Holy.mp3',
+  'tunnel-lights': 'The Birth of the Holy.mp3',
   'default': 'background-music.mp3'
 };
 
@@ -456,8 +460,9 @@ function App() {
   const [zoom, setZoom] = useState(0.0);
   const { audioData, toggleListening } = useAudioAnalyzer();
 
-  // Calculate effective brightness (intro affects it for abstract-waves only)
-  const isInIntro = vrIntroStarted && selectedShader === 'abstract-waves' && !introComplete;
+  // Calculate effective brightness (intro affects it for abstract-waves and tunnel-lights)
+  const hasIntro = selectedShader === 'abstract-waves' || selectedShader === 'tunnel-lights';
+  const isInIntro = vrIntroStarted && hasIntro && !introComplete;
   const introBrightness = 0.1 + 0.9 * introProgress; // 0.1 → 1.0
   const brightness = isInIntro ? introBrightness * baseBrightness : baseBrightness;
 
@@ -593,7 +598,7 @@ function App() {
             <BackgroundMusic shouldPlay={musicStarted} shaderId={selectedShader} />
             {/* VR Intro animator - drives brightness fade using useFrame */}
             <VRIntroAnimator
-              started={vrIntroStarted && selectedShader === 'abstract-waves'}
+              started={vrIntroStarted && hasIntro}
               onProgress={handleIntroProgress}
               onComplete={handleIntroComplete}
             />
