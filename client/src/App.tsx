@@ -1,6 +1,7 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Suspense, useState, useCallback, useRef, useEffect } from "react";
 import { XR, createXRStore, XROrigin } from "@react-three/xr";
+import { Text } from "@react-three/drei";
 import { VRShaderScene } from "./components/VRShaderScene";
 import { ShaderGallery } from "./components/ShaderGallery";
 import { MorphingBlobsShader } from "./shaders/MorphingBlobsShader";
@@ -304,6 +305,35 @@ function playTrackForShader(shaderId: string) {
   }
 }
 
+// Component to capture initial head orientation when VR starts
+interface OrientationCaptureProps {
+  onCapture: (rotation: number) => void;
+  shouldCapture: boolean;
+}
+
+function OrientationCapture({ onCapture, shouldCapture }: OrientationCaptureProps) {
+  const { camera } = useThree();
+  const captured = useRef(false);
+
+  useFrame(() => {
+    if (shouldCapture && !captured.current) {
+      // Get the camera's Y rotation (horizontal look direction)
+      const euler = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ');
+      onCapture(euler.y);
+      captured.current = true;
+    }
+  });
+
+  // Reset capture flag when shouldCapture changes to false
+  useEffect(() => {
+    if (!shouldCapture) {
+      captured.current = false;
+    }
+  }, [shouldCapture]);
+
+  return null;
+}
+
 interface BackgroundMusicProps {
   shouldPlay: boolean;
   shaderId: string;
@@ -419,44 +449,48 @@ function useIntroSequence(shaderId: string, started: boolean): IntroState {
     const animate = () => {
       const elapsed = Date.now() - startTimeRef.current;
 
-      // Timeline:
-      // 0-3s: Audio fade in, black screen
-      // 3-6s: Question fades in
-      // 6-9s: Question visible
-      // 9-11s: Question fades out
-      // 11-18s: Lights gradually reveal
-      // 18s+: Complete
+      // Shorter timeline:
+      // 0-2s: Audio fade in, darkness with subtle glow
+      // 2-4s: Question fades in
+      // 4-6s: Question visible
+      // 6-7s: Question fades out
+      // 7-14s: Lights gradually reveal
+      // 14s+: Complete
 
       let phase: IntroPhase = 'fadeIn';
       let questionOpacity = 0;
       let reveal = 0;
       let audioVolume = 0;
 
-      if (elapsed < 3000) {
-        // Phase 1: Audio fade in (0-3s)
+      if (elapsed < 2000) {
+        // Phase 1: Audio fade in (0-2s) - slight reveal for ambient glow
         phase = 'fadeIn';
-        audioVolume = Math.min(1, elapsed / 3000);
-      } else if (elapsed < 6000) {
-        // Phase 2: Question fades in (3-6s)
+        audioVolume = Math.min(1, elapsed / 2000);
+        reveal = 0.05; // Minimal glow so it's not completely black
+      } else if (elapsed < 4000) {
+        // Phase 2: Question fades in (2-4s)
         phase = 'question';
         audioVolume = 1;
-        questionOpacity = Math.min(1, (elapsed - 3000) / 3000);
-      } else if (elapsed < 9000) {
-        // Phase 3: Question visible (6-9s)
+        questionOpacity = Math.min(1, (elapsed - 2000) / 2000);
+        reveal = 0.05;
+      } else if (elapsed < 6000) {
+        // Phase 3: Question visible (4-6s)
         phase = 'question';
         audioVolume = 1;
         questionOpacity = 1;
-      } else if (elapsed < 11000) {
-        // Phase 4: Question fades out (9-11s)
+        reveal = 0.05;
+      } else if (elapsed < 7000) {
+        // Phase 4: Question fades out (6-7s)
         phase = 'questionFade';
         audioVolume = 1;
-        questionOpacity = Math.max(0, 1 - (elapsed - 9000) / 2000);
-      } else if (elapsed < 18000) {
-        // Phase 5: Lights reveal (11-18s)
+        questionOpacity = Math.max(0, 1 - (elapsed - 6000) / 1000);
+        reveal = 0.05;
+      } else if (elapsed < 14000) {
+        // Phase 5: Lights reveal (7-14s)
         phase = 'reveal';
         audioVolume = 1;
         questionOpacity = 0;
-        reveal = Math.min(1, (elapsed - 11000) / 7000);
+        reveal = 0.05 + 0.95 * Math.min(1, (elapsed - 7000) / 7000);
       } else {
         // Complete
         phase = 'complete';
@@ -478,7 +512,55 @@ function useIntroSequence(shaderId: string, started: boolean): IntroState {
   return state;
 }
 
-// Intro overlay component for the question text
+// 3D Text component for VR intro question - renders in the 3D scene
+interface IntroText3DProps {
+  question: string;
+  opacity: number;
+  initialRotation: number;
+}
+
+function IntroText3D({ question, opacity, initialRotation }: IntroText3DProps) {
+  const textRef = useRef<THREE.Mesh>(null);
+
+  // Animate text opacity via material
+  useFrame(() => {
+    if (textRef.current) {
+      const material = textRef.current.material as THREE.MeshBasicMaterial;
+      if (material) {
+        material.opacity = opacity;
+      }
+    }
+  });
+
+  if (opacity <= 0) return null;
+
+  return (
+    <group rotation={[0, initialRotation, 0]}>
+      <Text
+        ref={textRef}
+        position={[0, 0, -4]}
+        fontSize={0.3}
+        maxWidth={5}
+        lineHeight={1.4}
+        letterSpacing={0.02}
+        textAlign="center"
+        font="https://fonts.gstatic.com/s/spacegrotesk/v16/V8mDoQDjQSkFtoMM3T6r8E7mPb54C_k3HqUtEw.woff"
+        anchorX="center"
+        anchorY="middle"
+      >
+        {question}
+        <meshBasicMaterial
+          color="#ffffff"
+          transparent
+          opacity={opacity}
+          depthWrite={false}
+        />
+      </Text>
+    </group>
+  );
+}
+
+// Intro overlay component for the question text (fallback for non-VR)
 interface IntroOverlayProps {
   question: string;
   opacity: number;
@@ -523,6 +605,7 @@ function App() {
   const [selectedShader, setSelectedShader] = useState<string | null>(null);
   const [vrError, setVrError] = useState<string | null>(null);
   const [introStarted, setIntroStarted] = useState(false);
+  const [initialRotation, setInitialRotation] = useState(0);
   const [speed, setSpeed] = useState(1.0);
   const [brightness, setBrightness] = useState(1.0);
   const [colorShift, setColorShift] = useState(0.0);
@@ -581,6 +664,7 @@ function App() {
     }
     setSelectedShader(null);
     setIntroStarted(false);
+    setInitialRotation(0);
     setVrError(null);
   }, []);
 
@@ -613,6 +697,11 @@ function App() {
   const shaderReveal = isInIntro ? introState.reveal : 1;
   const showControls = !isInIntro;
 
+  // Callback to capture initial orientation
+  const handleOrientationCapture = useCallback((rotation: number) => {
+    setInitialRotation(rotation);
+  }, []);
+
   // Show VR experience for selected shader
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden', background: '#000' }}>
@@ -628,16 +717,35 @@ function App() {
         <XR store={store}>
           <XROrigin position={[0, 0, 0]} />
           <Suspense fallback={null}>
-            <ShaderRenderer
-              shaderId={selectedShader}
-              audioData={audioData}
-              speed={speed}
-              pulse={pulse}
-              brightness={brightness}
-              colorShift={colorShift}
-              zoom={zoom}
-              reveal={shaderReveal}
+            {/* Capture initial head orientation when VR starts */}
+            <OrientationCapture
+              onCapture={handleOrientationCapture}
+              shouldCapture={introStarted}
             />
+
+            {/* Rotate entire experience to align with initial view direction */}
+            <group rotation={[0, -initialRotation, 0]}>
+              <ShaderRenderer
+                shaderId={selectedShader}
+                audioData={audioData}
+                speed={speed}
+                pulse={pulse}
+                brightness={brightness}
+                colorShift={colorShift}
+                zoom={zoom}
+                reveal={shaderReveal}
+              />
+            </group>
+
+            {/* 3D intro text - visible in VR headset */}
+            {isInIntro && (
+              <IntroText3D
+                question={introQuestion}
+                opacity={introState.questionOpacity}
+                initialRotation={-initialRotation}
+              />
+            )}
+
             <VRControllerHandler
               onBack={handleBack}
               onSpeedChange={handleSpeedChange}
@@ -654,7 +762,7 @@ function App() {
         </XR>
       </Canvas>
 
-      {/* Intro question overlay - only show after VR entry */}
+      {/* Intro question overlay - fallback for non-VR viewing */}
       {isInIntro && (
         <IntroOverlay
           question={introQuestion}
