@@ -70,6 +70,14 @@ const fragmentShader = `
     vec3 glowColor = vec3(1.0, 0.9, 0.7); // Warm white glow
     o.rgb += glowColor * poleGlow * iBrightness;
 
+    // Seam glow - vertical line of light at the "far end" (tunnel effect)
+    // Seam is where x ≈ 0 and z < 0 (back of sphere)
+    float seamProximity = 1.0 - abs(vPosition.x); // Close to 1 when x near 0
+    float atBack = smoothstep(0.0, -0.3, vPosition.z); // 1 when z is negative
+    float seamGlow = seamProximity * atBack;
+    seamGlow = smoothstep(0.85, 1.0, seamGlow) * 0.9; // Sharp falloff
+    o.rgb += glowColor * seamGlow * iBrightness;
+
     gl_FragColor = vec4(o.rgb, 1.0);
   }
 `;
@@ -80,6 +88,7 @@ interface AbstractWavesShaderProps {
   brightness?: number;
   colorShift?: number;
   pulse?: number;
+  headRotationY?: number; // Initial head Y rotation for alignment
 }
 
 export function AbstractWavesShader({
@@ -87,7 +96,8 @@ export function AbstractWavesShader({
   zoom = 0.0,
   brightness = 1.0,
   colorShift = 0.0,
-  pulse = 0.0
+  pulse = 0.0,
+  headRotationY = 0
 }: AbstractWavesShaderProps) {
   const meshRef = useRef<THREE.Mesh>(null);
 
@@ -118,7 +128,7 @@ export function AbstractWavesShader({
   const tiltAngle = 35 * (Math.PI / 180);
 
   return (
-    <mesh ref={meshRef} scale={[-1, 1, 1]} rotation={[tiltAngle, 0, 0]}>
+    <mesh ref={meshRef} scale={[-1, 1, 1]} rotation={[tiltAngle, -headRotationY, 0]}>
       <sphereGeometry args={[50, 64, 32]} />
       <shaderMaterial
         vertexShader={vertexShader}
