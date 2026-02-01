@@ -32,10 +32,13 @@ const fragmentShader = `
       // Compute raymarch sample point
       vec3 p = z * normalize(vec3(uv * 2.0, -1.0));
 
-      // Turbulence loop
-      for(float td = 5.0; td < 200.0; td *= 2.0) {
-        p += 0.6 * sin(p.yzx * td - 0.2 * t) / td;
-      }
+      // Turbulence - unrolled for mobile GPU (was nested loop)
+      p += 0.12 * sin(p.yzx * 5.0 - 0.2 * t);
+      p += 0.06 * sin(p.yzx * 10.0 - 0.2 * t);
+      p += 0.03 * sin(p.yzx * 20.0 - 0.2 * t);
+      p += 0.015 * sin(p.yzx * 40.0 - 0.2 * t);
+      p += 0.0075 * sin(p.yzx * 80.0 - 0.2 * t);
+      p += 0.00375 * sin(p.yzx * 160.0 - 0.2 * t);
 
       // Compute distance (smaller steps in clouds when s is negative)
       s = 0.3 - abs(p.y);
