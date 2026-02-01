@@ -1,21 +1,48 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Suspense, useState, useCallback, useRef, useEffect } from "react";
 import { XR, createXRStore } from "@react-three/xr";
-import { VRShaderScene, COLOR_PALETTES } from "./components/VRShaderScene";
+import { VRShaderScene } from "./components/VRShaderScene";
+import { ShaderGallery } from "./components/ShaderGallery";
+import { MorphingBlobsShader } from "./shaders/MorphingBlobsShader";
+import { AbstractWavesShader } from "./shaders/AbstractWavesShader";
+import { SunsetCloudsShader } from "./shaders/SunsetCloudsShader";
+import { SpiralTunnelShader } from "./shaders/SpiralTunnelShader";
+import { BokehLightsShader } from "./shaders/BokehLightsShader";
 import { useAudioAnalyzer } from "./hooks/useAudioAnalyzer";
+import { SHADERS } from "./shaders";
 import "@fontsource/inter";
 import * as THREE from "three";
 
 const store = createXRStore();
 
-interface ControlButtonsProps {
-  onEnterVR: () => void;
-  onEnableAudio: () => void;
-  audioReady: boolean;
-  vrError: string | null;
+// Shader component mapping
+function ShaderRenderer({ shaderId, audioData }: { shaderId: string; audioData: any }) {
+  switch (shaderId) {
+    case 'audio-reactive':
+      return <VRShaderScene audioData={audioData} paletteIndex={0} />;
+    case 'morphing-blobs':
+      return <MorphingBlobsShader />;
+    case 'abstract-waves':
+      return <AbstractWavesShader />;
+    case 'sunset-clouds':
+      return <SunsetCloudsShader />;
+    case 'spiral-tunnel':
+      return <SpiralTunnelShader />;
+    case 'bokeh-lights':
+      return <BokehLightsShader />;
+    default:
+      return <VRShaderScene audioData={audioData} paletteIndex={0} />;
+  }
 }
 
-function ControlButtons({ onEnterVR, onEnableAudio, audioReady, vrError }: ControlButtonsProps) {
+interface ControlButtonsProps {
+  onEnterVR: () => void;
+  onBack: () => void;
+  vrError: string | null;
+  shaderName: string;
+}
+
+function ControlButtons({ onEnterVR, onBack, vrError, shaderName }: ControlButtonsProps) {
   return (
     <div style={{
       position: 'absolute',
@@ -28,24 +55,35 @@ function ControlButtons({ onEnterVR, onEnableAudio, audioReady, vrError }: Contr
       alignItems: 'center',
       gap: '12px'
     }}>
-      {!audioReady ? (
+      <div style={{
+        color: 'white',
+        fontSize: '18px',
+        fontWeight: 'bold',
+        textShadow: '0 2px 8px rgba(0,0,0,0.8)',
+        marginBottom: '8px',
+        fontFamily: 'Inter, sans-serif'
+      }}>
+        {shaderName}
+      </div>
+
+      <div style={{ display: 'flex', gap: '12px' }}>
         <button
-          onClick={onEnableAudio}
+          onClick={onBack}
           style={{
             padding: '14px 28px',
             fontSize: '16px',
             fontWeight: 'bold',
-            backgroundColor: '#ff8800',
-            color: '#000',
+            backgroundColor: '#666',
+            color: '#fff',
             border: 'none',
             borderRadius: '8px',
             cursor: 'pointer',
-            boxShadow: '0 4px 20px rgba(255, 136, 0, 0.4)'
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4)'
           }}
         >
-          START AUDIO
+          ← BACK
         </button>
-      ) : (
+
         <button
           onClick={onEnterVR}
           style={{
@@ -62,8 +100,8 @@ function ControlButtons({ onEnterVR, onEnableAudio, audioReady, vrError }: Contr
         >
           ENTER VR
         </button>
-      )}
-      
+      </div>
+
       {vrError && (
         <div style={{
           backgroundColor: 'rgba(255, 0, 0, 0.8)',
@@ -77,90 +115,55 @@ function ControlButtons({ onEnterVR, onEnableAudio, audioReady, vrError }: Contr
           {vrError}
         </div>
       )}
-      
+
       <div style={{
         color: 'rgba(255, 255, 255, 0.7)',
         fontSize: '12px',
         textAlign: 'center',
         maxWidth: '300px'
       }}>
-        {!audioReady ? (
-          <>Tap to enable music & microphone</>
-        ) : (
-          <>Audio ready! Tap to enter VR<br/>
-          In VR: Right Trigger/A/B = Toggle Mic | X/Y = Change Palette</>
-        )}
+        Tap ENTER VR for immersive experience
       </div>
     </div>
   );
 }
 
 interface VRControllerHandlerProps {
-  onToggleMic: () => void;
-  onCyclePalette: () => void;
+  onBack: () => void;
 }
 
-function VRControllerHandler({ onToggleMic, onCyclePalette }: VRControllerHandlerProps) {
+function VRControllerHandler({ onBack }: VRControllerHandlerProps) {
   const lastButtonStates = useRef<{ [key: string]: boolean }>({});
-  const hasLoggedButtons = useRef(false);
-  
+
   useFrame((state) => {
     const session = state.gl.xr.getSession();
     if (!session?.inputSources) return;
-    
+
     session.inputSources.forEach((inputSource) => {
       if (!inputSource.gamepad) return;
-      
+
       const gamepad = inputSource.gamepad;
       const handedness = inputSource.handedness;
-      
-      if (!hasLoggedButtons.current && gamepad.buttons.length > 0) {
-        console.log(`VR Controller ${handedness}: ${gamepad.buttons.length} buttons available`);
-        hasLoggedButtons.current = true;
-      }
-      
+
+      // B button or Y button to go back
       if (handedness === 'right') {
-        const triggerPressed = gamepad.buttons[0]?.pressed || false;
-        const aPressed = gamepad.buttons[4]?.pressed || false;
         const bPressed = gamepad.buttons[5]?.pressed || false;
-        
-        if (triggerPressed && !lastButtonStates.current['rtrigger']) {
-          console.log('VR: Right trigger pressed - toggling mic');
-          onToggleMic();
-        }
-        if (aPressed && !lastButtonStates.current['a']) {
-          console.log('VR: A button pressed - toggling mic');
-          onToggleMic();
-        }
         if (bPressed && !lastButtonStates.current['b']) {
-          console.log('VR: B button pressed - toggling mic');
-          onToggleMic();
+          onBack();
         }
-        
-        lastButtonStates.current['rtrigger'] = triggerPressed;
-        lastButtonStates.current['a'] = aPressed;
         lastButtonStates.current['b'] = bPressed;
       }
-      
+
       if (handedness === 'left') {
-        const xPressed = gamepad.buttons[4]?.pressed || false;
         const yPressed = gamepad.buttons[5]?.pressed || false;
-        
-        if (xPressed && !lastButtonStates.current['x']) {
-          console.log('VR: X button pressed - cycling palette');
-          onCyclePalette();
-        }
         if (yPressed && !lastButtonStates.current['y']) {
-          console.log('VR: Y button pressed - cycling palette');
-          onCyclePalette();
+          onBack();
         }
-        
-        lastButtonStates.current['x'] = xPressed;
         lastButtonStates.current['y'] = yPressed;
       }
     });
   });
-  
+
   return null;
 }
 
@@ -184,18 +187,18 @@ audioLoader.load('/audio/background-music.mp3', (buffer) => {
 function startBackgroundMusicNow(camera: THREE.Camera) {
   if (globalAudio.started || !globalAudio.buffer) return;
   globalAudio.started = true;
-  
+
   const listener = new THREE.AudioListener();
   camera.add(listener);
   globalAudio.listener = listener;
-  
+
   const audio = new THREE.Audio(listener);
   globalAudio.audio = audio;
-  
+
   audio.setBuffer(globalAudio.buffer);
   audio.setLoop(true);
   audio.setVolume(0.3);
-  
+
   if (listener.context.state === 'suspended') {
     listener.context.resume().then(() => {
       audio.play();
@@ -213,10 +216,10 @@ interface BackgroundMusicProps {
 
 function BackgroundMusic({ shouldPlay }: BackgroundMusicProps) {
   const { camera } = useThree();
-  
+
   useEffect(() => {
     if (!shouldPlay || globalAudio.started) return;
-    
+
     if (globalAudio.loaded) {
       startBackgroundMusicNow(camera);
     } else {
@@ -228,7 +231,7 @@ function BackgroundMusic({ shouldPlay }: BackgroundMusicProps) {
       }, 100);
       return () => clearInterval(checkInterval);
     }
-    
+
     return () => {
       if (globalAudio.audio?.isPlaying) {
         globalAudio.audio.stop();
@@ -238,16 +241,15 @@ function BackgroundMusic({ shouldPlay }: BackgroundMusicProps) {
       }
     };
   }, [camera, shouldPlay]);
-  
+
   return null;
 }
 
 function App() {
+  const [selectedShader, setSelectedShader] = useState<string | null>(null);
   const [vrError, setVrError] = useState<string | null>(null);
-  const [paletteIndex, setPaletteIndex] = useState(0);
-  const [audioReady, setAudioReady] = useState(false);
   const [musicStarted, setMusicStarted] = useState(false);
-  const { isListening, audioData, toggleListening } = useAudioAnalyzer();
+  const { audioData, toggleListening } = useAudioAnalyzer();
 
   const checkVRSupport = useCallback(async () => {
     if (navigator.xr) {
@@ -260,25 +262,25 @@ function App() {
     return false;
   }, []);
 
-  const enableAudio = useCallback(async () => {
-    setVrError(null);
-    console.log('Enabling audio before VR...');
-    
-    // Start background music first (user gesture)
+  const handleSelectShader = useCallback((shaderId: string) => {
+    setSelectedShader(shaderId);
     setMusicStarted(true);
-    
-    // Request mic permission while browser has focus
-    try {
-      await toggleListening();
-      console.log('Mic enabled successfully');
-    } catch (e) {
-      console.log('Mic permission denied or failed:', e);
-      // Continue anyway - mic is optional
+
+    // Start audio for audio-reactive shader
+    if (shaderId === 'audio-reactive') {
+      toggleListening();
     }
-    
-    setAudioReady(true);
-    console.log('Audio ready, you can now enter VR');
   }, [toggleListening]);
+
+  const handleBack = useCallback(() => {
+    // Exit VR if in VR mode
+    const session = store.getState().session;
+    if (session) {
+      session.end();
+    }
+    setSelectedShader(null);
+    setVrError(null);
+  }, []);
 
   const enterVR = useCallback(async () => {
     setVrError(null);
@@ -295,16 +297,14 @@ function App() {
     }
   }, [checkVRSupport]);
 
-  const cyclePalette = useCallback(() => {
-    setPaletteIndex(prev => (prev + 1) % COLOR_PALETTES.length);
-    console.log('Palette cycled to:', COLOR_PALETTES[(paletteIndex + 1) % COLOR_PALETTES.length].name);
-  }, [paletteIndex]);
+  const currentShader = SHADERS.find(s => s.id === selectedShader);
 
-  const handleToggleMic = useCallback(() => {
-    console.log('handleToggleMic called');
-    toggleListening();
-  }, [toggleListening]);
+  // Show gallery if no shader selected
+  if (!selectedShader) {
+    return <ShaderGallery onSelectShader={handleSelectShader} />;
+  }
 
+  // Show VR experience for selected shader
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden', background: '#000' }}>
       <Canvas
@@ -317,20 +317,17 @@ function App() {
       >
         <XR store={store}>
           <Suspense fallback={null}>
-            <VRShaderScene audioData={audioData} paletteIndex={paletteIndex} />
-            <VRControllerHandler 
-              onToggleMic={handleToggleMic} 
-              onCyclePalette={cyclePalette} 
-            />
+            <ShaderRenderer shaderId={selectedShader} audioData={audioData} />
+            <VRControllerHandler onBack={handleBack} />
             <BackgroundMusic shouldPlay={musicStarted} />
           </Suspense>
         </XR>
       </Canvas>
       <ControlButtons
         onEnterVR={enterVR}
-        onEnableAudio={enableAudio}
-        audioReady={audioReady}
+        onBack={handleBack}
         vrError={vrError}
+        shaderName={currentShader?.name || 'Shader'}
       />
     </div>
   );
