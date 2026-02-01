@@ -32,6 +32,9 @@ const fragmentShader = `
       // Compute raymarch sample point
       vec3 p = z * normalize(vec3(uv * 2.0, -1.0));
 
+      // Forward motion - flying through clouds
+      p.z -= t * 0.5;
+
       // Turbulence - unrolled for mobile GPU (was nested loop)
       p += 0.12 * sin(p.yzx * 5.0 - 0.2 * t);
       p += 0.06 * sin(p.yzx * 10.0 - 0.2 * t);
