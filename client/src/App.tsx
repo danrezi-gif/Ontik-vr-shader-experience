@@ -223,81 +223,127 @@ function VRControllerHandler({ onBack, onSpeedChange, onBrightnessChange, onColo
   return null;
 }
 
-const globalAudio = {
-  buffer: null as AudioBuffer | null,
-  loaded: false,
-  audio: null as THREE.Audio | null,
-  listener: null as THREE.AudioListener | null,
-  started: false
+// Shader-specific audio tracks
+const SHADER_AUDIO: { [key: string]: string } = {
+  'abstract-waves': 'The Birth of the Holy.mp3',
+  'default': 'background-music.mp3'
 };
 
+const audioBuffers: { [key: string]: AudioBuffer | null } = {};
 const audioLoader = new THREE.AudioLoader();
-const audioPath = `${import.meta.env.BASE_URL}audio/background-music.mp3`;
-audioLoader.load(audioPath, (buffer) => {
-  globalAudio.buffer = buffer;
-  globalAudio.loaded = true;
-  console.log('Background music preloaded from:', audioPath);
-}, undefined, (err) => {
-  console.error('Error preloading background music:', err, 'Path:', audioPath);
+
+// Preload all audio files
+Object.entries(SHADER_AUDIO).forEach(([key, filename]) => {
+  const path = `${import.meta.env.BASE_URL}audio/${filename}`;
+  audioLoader.load(path, (buffer) => {
+    audioBuffers[key] = buffer;
+    console.log(`Audio preloaded: ${key} from ${path}`);
+  }, undefined, (err) => {
+    console.error(`Error preloading audio ${key}:`, err);
+  });
 });
 
-function startBackgroundMusicNow(camera: THREE.Camera) {
-  if (globalAudio.started || !globalAudio.buffer) return;
-  globalAudio.started = true;
+const globalAudio = {
+  audio: null as THREE.Audio | null,
+  listener: null as THREE.AudioListener | null,
+  currentTrack: null as string | null,
+  initialized: false
+};
+
+function getAudioBufferForShader(shaderId: string): AudioBuffer | null {
+  return audioBuffers[shaderId] || audioBuffers['default'] || null;
+}
+
+function initAudioListener(camera: THREE.Camera) {
+  if (globalAudio.initialized) return;
+  globalAudio.initialized = true;
 
   const listener = new THREE.AudioListener();
   camera.add(listener);
   globalAudio.listener = listener;
 
   const audio = new THREE.Audio(listener);
-  globalAudio.audio = audio;
-
-  audio.setBuffer(globalAudio.buffer);
   audio.setLoop(true);
   audio.setVolume(0.3);
+  globalAudio.audio = audio;
+}
 
-  if (listener.context.state === 'suspended') {
-    listener.context.resume().then(() => {
-      audio.play();
-      console.log('Background music started after resume');
+function playTrackForShader(shaderId: string) {
+  if (!globalAudio.audio || !globalAudio.listener) return;
+
+  const buffer = getAudioBufferForShader(shaderId);
+  if (!buffer) {
+    console.log('Audio buffer not ready for:', shaderId);
+    return;
+  }
+
+  // If same track is already playing, don't restart
+  if (globalAudio.currentTrack === shaderId && globalAudio.audio.isPlaying) {
+    return;
+  }
+
+  // Stop current track if playing
+  if (globalAudio.audio.isPlaying) {
+    globalAudio.audio.stop();
+  }
+
+  // Set new buffer and play
+  globalAudio.audio.setBuffer(buffer);
+  globalAudio.currentTrack = shaderId;
+
+  const ctx = globalAudio.listener.context;
+  if (ctx.state === 'suspended') {
+    ctx.resume().then(() => {
+      globalAudio.audio?.play();
+      console.log('Playing track for:', shaderId);
     });
   } else {
-    audio.play();
-    console.log('Background music started immediately');
+    globalAudio.audio.play();
+    console.log('Playing track for:', shaderId);
   }
 }
 
 interface BackgroundMusicProps {
   shouldPlay: boolean;
+  shaderId: string;
 }
 
-function BackgroundMusic({ shouldPlay }: BackgroundMusicProps) {
+function BackgroundMusic({ shouldPlay, shaderId }: BackgroundMusicProps) {
   const { camera } = useThree();
 
   useEffect(() => {
-    if (!shouldPlay || globalAudio.started) return;
+    if (!shouldPlay) return;
 
-    if (globalAudio.loaded) {
-      startBackgroundMusicNow(camera);
-    } else {
+    // Initialize audio listener if needed
+    initAudioListener(camera);
+
+    // Try to play the track
+    const tryPlay = () => {
+      const buffer = getAudioBufferForShader(shaderId);
+      if (buffer) {
+        playTrackForShader(shaderId);
+        return true;
+      }
+      return false;
+    };
+
+    // If buffer not ready, poll until it is
+    if (!tryPlay()) {
       const checkInterval = setInterval(() => {
-        if (globalAudio.loaded && !globalAudio.started) {
-          startBackgroundMusicNow(camera);
+        if (tryPlay()) {
           clearInterval(checkInterval);
         }
       }, 100);
       return () => clearInterval(checkInterval);
     }
+  }, [camera, shouldPlay, shaderId]);
 
-    return () => {
-      if (globalAudio.audio?.isPlaying) {
-        globalAudio.audio.stop();
-      }
-      if (globalAudio.listener) {
-        camera.remove(globalAudio.listener);
-      }
-    };
-  }, [camera, shouldPlay]);
+  // Switch tracks when shader changes
+  useEffect(() => {
+    if (shouldPlay && globalAudio.initialized) {
+      playTrackForShader(shaderId);
+    }
+  }, [shaderId, shouldPlay]);
 
   return null;
 }
@@ -441,7 +487,7 @@ function App() {
               onColorShiftChange={handleColorShiftChange}
               onZoomChange={handleZoomChange}
             />
-            <BackgroundMusic shouldPlay={musicStarted} />
+            <BackgroundMusic shouldPlay={musicStarted} shaderId={selectedShader} />
           </Suspense>
         </XR>
       </Canvas>
