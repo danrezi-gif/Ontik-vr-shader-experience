@@ -374,40 +374,43 @@ function useBPMPulse(bpm: number, enabled: boolean) {
   return pulse;
 }
 
-// Simple intro sequence hook - manages timing for VR intro
-function useVRIntroSequence(started: boolean) {
-  const [phase, setPhase] = useState<'idle' | 'intro' | 'complete'>('idle');
-  const [progress, setProgress] = useState(0); // 0 to 1
-  const startTimeRef = useRef(0);
+// VR Intro animator - runs inside Canvas using useFrame for reliable VR animation
+interface VRIntroAnimatorProps {
+  started: boolean;
+  onProgress: (progress: number) => void;
+  onComplete: () => void;
+}
 
-  useEffect(() => {
+function VRIntroAnimator({ started, onProgress, onComplete }: VRIntroAnimatorProps) {
+  const startTimeRef = useRef<number | null>(null);
+  const completedRef = useRef(false);
+
+  useFrame(() => {
     if (!started) {
-      setPhase('idle');
-      setProgress(0);
+      startTimeRef.current = null;
+      completedRef.current = false;
       return;
     }
 
-    startTimeRef.current = Date.now();
-    setPhase('intro');
+    if (startTimeRef.current === null) {
+      startTimeRef.current = Date.now();
+    }
 
-    const animate = () => {
-      const elapsed = Date.now() - startTimeRef.current;
-      // 8 second intro: brightness goes from 0.1 to 1
-      const duration = 8000;
-      const p = Math.min(1, elapsed / duration);
-      setProgress(p);
+    if (completedRef.current) return;
 
-      if (p < 1) {
-        requestAnimationFrame(animate);
-      } else {
-        setPhase('complete');
-      }
-    };
+    const elapsed = Date.now() - startTimeRef.current;
+    const duration = 8000; // 8 seconds
+    const progress = Math.min(1, elapsed / duration);
 
-    requestAnimationFrame(animate);
-  }, [started]);
+    onProgress(progress);
 
-  return { phase, progress };
+    if (progress >= 1 && !completedRef.current) {
+      completedRef.current = true;
+      onComplete();
+    }
+  });
+
+  return null;
 }
 
 function App() {
@@ -415,24 +418,30 @@ function App() {
   const [vrError, setVrError] = useState<string | null>(null);
   const [musicStarted, setMusicStarted] = useState(false);
   const [vrIntroStarted, setVrIntroStarted] = useState(false);
+  const [introProgress, setIntroProgress] = useState(0);
+  const [introComplete, setIntroComplete] = useState(false);
   const [speed, setSpeed] = useState(1.0);
   const [baseBrightness, setBaseBrightness] = useState(1.0);
   const [colorShift, setColorShift] = useState(0.0);
   const [zoom, setZoom] = useState(0.0);
   const { audioData, toggleListening } = useAudioAnalyzer();
 
-  // VR intro sequence for Mirror of Lights shader
-  const introSequence = useVRIntroSequence(vrIntroStarted && selectedShader === 'abstract-waves');
-
   // Calculate effective brightness (intro affects it for abstract-waves only)
-  const isInIntro = introSequence.phase === 'intro';
-  const introBrightness = 0.1 + 0.9 * introSequence.progress; // 0.1 → 1.0
-  const brightness = (selectedShader === 'abstract-waves' && vrIntroStarted && introSequence.phase !== 'complete')
-    ? introBrightness * baseBrightness
-    : baseBrightness;
+  const isInIntro = vrIntroStarted && selectedShader === 'abstract-waves' && !introComplete;
+  const introBrightness = 0.1 + 0.9 * introProgress; // 0.1 → 1.0
+  const brightness = isInIntro ? introBrightness * baseBrightness : baseBrightness;
 
   // BPM pulse for audio-reactive effects (only after intro)
-  const pulse = useBPMPulse(BPM, musicStarted && selectedShader === 'abstract-waves' && introSequence.phase === 'complete');
+  const pulse = useBPMPulse(BPM, musicStarted && selectedShader === 'abstract-waves' && introComplete);
+
+  // Callbacks for intro animator
+  const handleIntroProgress = useCallback((progress: number) => {
+    setIntroProgress(progress);
+  }, []);
+
+  const handleIntroComplete = useCallback(() => {
+    setIntroComplete(true);
+  }, []);
 
   const handleSpeedChange = useCallback((delta: number) => {
     setSpeed(prev => Math.max(0.1, Math.min(3.0, prev + delta)));
@@ -479,6 +488,8 @@ function App() {
     }
     setSelectedShader(null);
     setVrIntroStarted(false);
+    setIntroProgress(0);
+    setIntroComplete(false);
     setVrError(null);
   }, []);
 
@@ -538,6 +549,12 @@ function App() {
               onZoomChange={handleZoomChange}
             />
             <BackgroundMusic shouldPlay={musicStarted} shaderId={selectedShader} />
+            {/* VR Intro animator - drives brightness fade using useFrame */}
+            <VRIntroAnimator
+              started={vrIntroStarted && selectedShader === 'abstract-waves'}
+              onProgress={handleIntroProgress}
+              onComplete={handleIntroComplete}
+            />
           </Suspense>
         </XR>
       </Canvas>
