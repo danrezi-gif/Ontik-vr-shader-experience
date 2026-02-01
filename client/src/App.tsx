@@ -21,16 +21,19 @@ interface ShaderRendererProps {
   audioData: any;
   speed: number;
   pulse: number;
+  brightness: number;
+  colorShift: number;
+  zoom: number;
 }
 
-function ShaderRenderer({ shaderId, audioData, speed, pulse }: ShaderRendererProps) {
+function ShaderRenderer({ shaderId, audioData, speed, pulse, brightness, colorShift, zoom }: ShaderRendererProps) {
   switch (shaderId) {
     case 'audio-reactive':
       return <VRShaderScene audioData={audioData} paletteIndex={0} />;
     case 'morphing-blobs':
       return <MorphingBlobsShader />;
     case 'abstract-waves':
-      return <AbstractWavesShader speed={1.0} brightness={1.0} pulse={pulse} />;
+      return <AbstractWavesShader speed={speed} brightness={brightness} colorShift={colorShift} zoom={zoom} pulse={pulse} />;
     case 'sunset-clouds':
       return <SunsetCloudsShader speed={speed} />;
     case 'spiral-tunnel':
@@ -138,9 +141,12 @@ function ControlButtons({ onEnterVR, onBack, vrError, shaderName }: ControlButto
 interface VRControllerHandlerProps {
   onBack: () => void;
   onSpeedChange: (delta: number) => void;
+  onBrightnessChange: (delta: number) => void;
+  onColorShiftChange: (delta: number) => void;
+  onZoomChange: (delta: number) => void;
 }
 
-function VRControllerHandler({ onBack, onSpeedChange }: VRControllerHandlerProps) {
+function VRControllerHandler({ onBack, onSpeedChange, onBrightnessChange, onColorShiftChange, onZoomChange }: VRControllerHandlerProps) {
   const lastButtonStates = useRef<{ [key: string]: boolean }>({});
   const audioResumed = useRef(false);
 
@@ -182,15 +188,34 @@ function VRControllerHandler({ onBack, onSpeedChange }: VRControllerHandlerProps
           onSpeedChange(-0.1);
         }
         lastButtonStates.current['b'] = bPressed;
+
+        // Right thumbstick Y-axis = zoom
+        const thumbstickY = gamepad.axes[3] || 0;
+        if (Math.abs(thumbstickY) > 0.5) {
+          onZoomChange(-thumbstickY * 0.02);
+        }
       }
 
       if (handedness === 'left') {
+        // X button (button 4) = cycle color shift up
+        const xPressed = gamepad.buttons[4]?.pressed || false;
+        if (xPressed && !lastButtonStates.current['x']) {
+          onColorShiftChange(0.5);
+        }
+        lastButtonStates.current['x'] = xPressed;
+
         // Y button (button 5) = go back
         const yPressed = gamepad.buttons[5]?.pressed || false;
         if (yPressed && !lastButtonStates.current['y']) {
           onBack();
         }
         lastButtonStates.current['y'] = yPressed;
+
+        // Left thumbstick Y-axis = brightness
+        const thumbstickY = gamepad.axes[3] || 0;
+        if (Math.abs(thumbstickY) > 0.5) {
+          onBrightnessChange(-thumbstickY * 0.02);
+        }
       }
     });
   });
@@ -307,14 +332,29 @@ function App() {
   const [selectedShader, setSelectedShader] = useState<string | null>(null);
   const [vrError, setVrError] = useState<string | null>(null);
   const [musicStarted, setMusicStarted] = useState(false);
-  const [speed, setSpeed] = useState(0.5);
+  const [speed, setSpeed] = useState(1.0);
+  const [brightness, setBrightness] = useState(1.0);
+  const [colorShift, setColorShift] = useState(0.0);
+  const [zoom, setZoom] = useState(0.0);
   const { audioData, toggleListening } = useAudioAnalyzer();
 
   // BPM pulse for audio-reactive effects
   const pulse = useBPMPulse(BPM, musicStarted && selectedShader === 'abstract-waves');
 
   const handleSpeedChange = useCallback((delta: number) => {
-    setSpeed(prev => Math.max(0, Math.min(2.0, prev + delta)));
+    setSpeed(prev => Math.max(0.1, Math.min(3.0, prev + delta)));
+  }, []);
+
+  const handleBrightnessChange = useCallback((delta: number) => {
+    setBrightness(prev => Math.max(0.2, Math.min(2.0, prev + delta)));
+  }, []);
+
+  const handleColorShiftChange = useCallback((delta: number) => {
+    setColorShift(prev => (prev + delta) % 3.0);
+  }, []);
+
+  const handleZoomChange = useCallback((delta: number) => {
+    setZoom(prev => Math.max(-1.0, Math.min(1.0, prev + delta)));
   }, []);
 
   const checkVRSupport = useCallback(async () => {
@@ -385,8 +425,22 @@ function App() {
         <XR store={store}>
           <XROrigin position={[0, 0, 0]} />
           <Suspense fallback={null}>
-            <ShaderRenderer shaderId={selectedShader} audioData={audioData} speed={speed} pulse={pulse} />
-            <VRControllerHandler onBack={handleBack} onSpeedChange={handleSpeedChange} />
+            <ShaderRenderer
+              shaderId={selectedShader}
+              audioData={audioData}
+              speed={speed}
+              pulse={pulse}
+              brightness={brightness}
+              colorShift={colorShift}
+              zoom={zoom}
+            />
+            <VRControllerHandler
+              onBack={handleBack}
+              onSpeedChange={handleSpeedChange}
+              onBrightnessChange={handleBrightnessChange}
+              onColorShiftChange={handleColorShiftChange}
+              onZoomChange={handleZoomChange}
+            />
             <BackgroundMusic shouldPlay={musicStarted} />
           </Suspense>
         </XR>
