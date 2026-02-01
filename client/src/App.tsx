@@ -231,7 +231,7 @@ function VRControllerHandler({ onBack, onSpeedChange, onBrightnessChange, onColo
 // Shader-specific audio tracks
 const SHADER_AUDIO: { [key: string]: string } = {
   'abstract-waves': 'The Birth of the Holy.mp3',
-  'tunnel-lights': 'The Birth of the Holy.mp3',
+  'tunnel-lights': 'Russian chant - Покаяния отверзи ми двери.mp3',
   'default': 'background-music.mp3'
 };
 
