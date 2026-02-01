@@ -374,25 +374,72 @@ function useBPMPulse(bpm: number, enabled: boolean) {
   return pulse;
 }
 
+// Simple intro sequence hook - manages timing for VR intro
+function useVRIntroSequence(started: boolean) {
+  const [phase, setPhase] = useState<'idle' | 'intro' | 'complete'>('idle');
+  const [progress, setProgress] = useState(0); // 0 to 1
+  const startTimeRef = useRef(0);
+
+  useEffect(() => {
+    if (!started) {
+      setPhase('idle');
+      setProgress(0);
+      return;
+    }
+
+    startTimeRef.current = Date.now();
+    setPhase('intro');
+
+    const animate = () => {
+      const elapsed = Date.now() - startTimeRef.current;
+      // 8 second intro: brightness goes from 0.1 to 1
+      const duration = 8000;
+      const p = Math.min(1, elapsed / duration);
+      setProgress(p);
+
+      if (p < 1) {
+        requestAnimationFrame(animate);
+      } else {
+        setPhase('complete');
+      }
+    };
+
+    requestAnimationFrame(animate);
+  }, [started]);
+
+  return { phase, progress };
+}
+
 function App() {
   const [selectedShader, setSelectedShader] = useState<string | null>(null);
   const [vrError, setVrError] = useState<string | null>(null);
   const [musicStarted, setMusicStarted] = useState(false);
+  const [vrIntroStarted, setVrIntroStarted] = useState(false);
   const [speed, setSpeed] = useState(1.0);
-  const [brightness, setBrightness] = useState(1.0);
+  const [baseBrightness, setBaseBrightness] = useState(1.0);
   const [colorShift, setColorShift] = useState(0.0);
   const [zoom, setZoom] = useState(0.0);
   const { audioData, toggleListening } = useAudioAnalyzer();
 
-  // BPM pulse for audio-reactive effects
-  const pulse = useBPMPulse(BPM, musicStarted && selectedShader === 'abstract-waves');
+  // VR intro sequence for Mirror of Lights shader
+  const introSequence = useVRIntroSequence(vrIntroStarted && selectedShader === 'abstract-waves');
+
+  // Calculate effective brightness (intro affects it for abstract-waves only)
+  const isInIntro = introSequence.phase === 'intro';
+  const introBrightness = 0.1 + 0.9 * introSequence.progress; // 0.1 → 1.0
+  const brightness = (selectedShader === 'abstract-waves' && vrIntroStarted && introSequence.phase !== 'complete')
+    ? introBrightness * baseBrightness
+    : baseBrightness;
+
+  // BPM pulse for audio-reactive effects (only after intro)
+  const pulse = useBPMPulse(BPM, musicStarted && selectedShader === 'abstract-waves' && introSequence.phase === 'complete');
 
   const handleSpeedChange = useCallback((delta: number) => {
     setSpeed(prev => Math.max(0.1, Math.min(3.0, prev + delta)));
   }, []);
 
   const handleBrightnessChange = useCallback((delta: number) => {
-    setBrightness(prev => Math.max(0.2, Math.min(2.0, prev + delta)));
+    setBaseBrightness(prev => Math.max(0.2, Math.min(2.0, prev + delta)));
   }, []);
 
   const handleColorShiftChange = useCallback((delta: number) => {
@@ -431,6 +478,7 @@ function App() {
       session.end();
     }
     setSelectedShader(null);
+    setVrIntroStarted(false);
     setVrError(null);
   }, []);
 
@@ -440,6 +488,8 @@ function App() {
     if (supported) {
       try {
         await store.enterVR();
+        // Start VR intro sequence after entering VR
+        setVrIntroStarted(true);
       } catch (e) {
         setVrError('Failed to enter VR. Make sure your headset is connected.');
         console.error('VR entry error:', e);
