@@ -27,7 +27,7 @@ export const SHADERS: ShaderInfo[] = [
   },
   {
     id: 'tunnel-lights',
-    name: 'Digital Sanctuary',
+    name: 'The Luminous Path',
     description: 'A sacred passage toward the divine light',
     color: '#4488ff'
   },
