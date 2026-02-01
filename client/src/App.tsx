@@ -391,10 +391,10 @@ function initAudioListener(camera: THREE.Camera) {
   // Create positional audio for spatial shaders
   const positionalAudio = new THREE.PositionalAudio(listener);
   positionalAudio.setLoop(true);
-  positionalAudio.setVolume(0.6);
-  positionalAudio.setRefDistance(20); // Distance at which volume is full
+  positionalAudio.setVolume(1.0); // Increased from 0.6
+  positionalAudio.setRefDistance(100); // Increased from 20 - full volume up to 100 units
   positionalAudio.setMaxDistance(2000); // Max distance for attenuation
-  positionalAudio.setRolloffFactor(0.3); // Gentle rolloff for large space
+  positionalAudio.setRolloffFactor(0.1); // Reduced from 0.3 - gentler falloff
   positionalAudio.setDistanceModel('exponential');
   globalAudio.positionalAudio = positionalAudio;
 
