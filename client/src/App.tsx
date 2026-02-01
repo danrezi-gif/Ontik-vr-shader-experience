@@ -191,12 +191,13 @@ const globalAudio = {
 };
 
 const audioLoader = new THREE.AudioLoader();
-audioLoader.load('/audio/background-music.mp3', (buffer) => {
+const audioPath = `${import.meta.env.BASE_URL}audio/background-music.mp3`;
+audioLoader.load(audioPath, (buffer) => {
   globalAudio.buffer = buffer;
   globalAudio.loaded = true;
-  console.log('Background music preloaded');
+  console.log('Background music preloaded from:', audioPath);
 }, undefined, (err) => {
-  console.error('Error preloading background music:', err);
+  console.error('Error preloading background music:', err, 'Path:', audioPath);
 });
 
 function startBackgroundMusicNow(camera: THREE.Camera) {
@@ -328,6 +329,7 @@ function App() {
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden', background: '#000' }}>
       <Canvas
+        camera={{ position: [0, 0, 0], fov: 75 }}
         gl={{
           antialias: true,
           powerPreference: "high-performance",
