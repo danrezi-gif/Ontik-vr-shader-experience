@@ -20,16 +20,20 @@ interface ShaderRendererProps {
   shaderId: string;
   audioData: any;
   speed: number;
+  pulse: number;
+  brightness: number;
+  colorShift: number;
+  zoom: number;
 }
 
-function ShaderRenderer({ shaderId, audioData, speed }: ShaderRendererProps) {
+function ShaderRenderer({ shaderId, audioData, speed, pulse, brightness, colorShift, zoom }: ShaderRendererProps) {
   switch (shaderId) {
     case 'audio-reactive':
       return <VRShaderScene audioData={audioData} paletteIndex={0} />;
     case 'morphing-blobs':
       return <MorphingBlobsShader />;
     case 'abstract-waves':
-      return <AbstractWavesShader />;
+      return <AbstractWavesShader speed={speed} brightness={brightness} colorShift={colorShift} zoom={zoom} pulse={pulse} />;
     case 'sunset-clouds':
       return <SunsetCloudsShader speed={speed} />;
     case 'spiral-tunnel':
@@ -137,9 +141,12 @@ function ControlButtons({ onEnterVR, onBack, vrError, shaderName }: ControlButto
 interface VRControllerHandlerProps {
   onBack: () => void;
   onSpeedChange: (delta: number) => void;
+  onBrightnessChange: (delta: number) => void;
+  onColorShiftChange: (delta: number) => void;
+  onZoomChange: (delta: number) => void;
 }
 
-function VRControllerHandler({ onBack, onSpeedChange }: VRControllerHandlerProps) {
+function VRControllerHandler({ onBack, onSpeedChange, onBrightnessChange, onColorShiftChange, onZoomChange }: VRControllerHandlerProps) {
   const lastButtonStates = useRef<{ [key: string]: boolean }>({});
   const audioResumed = useRef(false);
 
@@ -181,15 +188,34 @@ function VRControllerHandler({ onBack, onSpeedChange }: VRControllerHandlerProps
           onSpeedChange(-0.1);
         }
         lastButtonStates.current['b'] = bPressed;
+
+        // Right thumbstick Y-axis = zoom
+        const thumbstickY = gamepad.axes[3] || 0;
+        if (Math.abs(thumbstickY) > 0.5) {
+          onZoomChange(-thumbstickY * 0.02);
+        }
       }
 
       if (handedness === 'left') {
+        // X button (button 4) = cycle color shift up
+        const xPressed = gamepad.buttons[4]?.pressed || false;
+        if (xPressed && !lastButtonStates.current['x']) {
+          onColorShiftChange(0.5);
+        }
+        lastButtonStates.current['x'] = xPressed;
+
         // Y button (button 5) = go back
         const yPressed = gamepad.buttons[5]?.pressed || false;
         if (yPressed && !lastButtonStates.current['y']) {
           onBack();
         }
         lastButtonStates.current['y'] = yPressed;
+
+        // Left thumbstick Y-axis = brightness
+        const thumbstickY = gamepad.axes[3] || 0;
+        if (Math.abs(thumbstickY) > 0.5) {
+          onBrightnessChange(-thumbstickY * 0.02);
+        }
       }
     });
   });
@@ -197,94 +223,184 @@ function VRControllerHandler({ onBack, onSpeedChange }: VRControllerHandlerProps
   return null;
 }
 
-const globalAudio = {
-  buffer: null as AudioBuffer | null,
-  loaded: false,
-  audio: null as THREE.Audio | null,
-  listener: null as THREE.AudioListener | null,
-  started: false
+// Shader-specific audio tracks
+const SHADER_AUDIO: { [key: string]: string } = {
+  'abstract-waves': 'The Birth of the Holy.mp3',
+  'default': 'background-music.mp3'
 };
 
+const audioBuffers: { [key: string]: AudioBuffer | null } = {};
 const audioLoader = new THREE.AudioLoader();
-const audioPath = `${import.meta.env.BASE_URL}audio/background-music.mp3`;
-audioLoader.load(audioPath, (buffer) => {
-  globalAudio.buffer = buffer;
-  globalAudio.loaded = true;
-  console.log('Background music preloaded from:', audioPath);
-}, undefined, (err) => {
-  console.error('Error preloading background music:', err, 'Path:', audioPath);
+
+// Preload all audio files
+Object.entries(SHADER_AUDIO).forEach(([key, filename]) => {
+  const path = `${import.meta.env.BASE_URL}audio/${filename}`;
+  audioLoader.load(path, (buffer) => {
+    audioBuffers[key] = buffer;
+    console.log(`Audio preloaded: ${key} from ${path}`);
+  }, undefined, (err) => {
+    console.error(`Error preloading audio ${key}:`, err);
+  });
 });
 
-function startBackgroundMusicNow(camera: THREE.Camera) {
-  if (globalAudio.started || !globalAudio.buffer) return;
-  globalAudio.started = true;
+const globalAudio = {
+  audio: null as THREE.Audio | null,
+  listener: null as THREE.AudioListener | null,
+  currentTrack: null as string | null,
+  initialized: false
+};
+
+function getAudioBufferForShader(shaderId: string): AudioBuffer | null {
+  return audioBuffers[shaderId] || audioBuffers['default'] || null;
+}
+
+function initAudioListener(camera: THREE.Camera) {
+  if (globalAudio.initialized) return;
+  globalAudio.initialized = true;
 
   const listener = new THREE.AudioListener();
   camera.add(listener);
   globalAudio.listener = listener;
 
   const audio = new THREE.Audio(listener);
-  globalAudio.audio = audio;
-
-  audio.setBuffer(globalAudio.buffer);
   audio.setLoop(true);
   audio.setVolume(0.3);
+  globalAudio.audio = audio;
+}
 
-  if (listener.context.state === 'suspended') {
-    listener.context.resume().then(() => {
-      audio.play();
-      console.log('Background music started after resume');
+function playTrackForShader(shaderId: string) {
+  if (!globalAudio.audio || !globalAudio.listener) return;
+
+  const buffer = getAudioBufferForShader(shaderId);
+  if (!buffer) {
+    console.log('Audio buffer not ready for:', shaderId);
+    return;
+  }
+
+  // If same track is already playing, don't restart
+  if (globalAudio.currentTrack === shaderId && globalAudio.audio.isPlaying) {
+    return;
+  }
+
+  // Stop current track if playing
+  if (globalAudio.audio.isPlaying) {
+    globalAudio.audio.stop();
+  }
+
+  // Set new buffer and play
+  globalAudio.audio.setBuffer(buffer);
+  globalAudio.currentTrack = shaderId;
+
+  const ctx = globalAudio.listener.context;
+  if (ctx.state === 'suspended') {
+    ctx.resume().then(() => {
+      globalAudio.audio?.play();
+      console.log('Playing track for:', shaderId);
     });
   } else {
-    audio.play();
-    console.log('Background music started immediately');
+    globalAudio.audio.play();
+    console.log('Playing track for:', shaderId);
   }
 }
 
 interface BackgroundMusicProps {
   shouldPlay: boolean;
+  shaderId: string;
 }
 
-function BackgroundMusic({ shouldPlay }: BackgroundMusicProps) {
+function BackgroundMusic({ shouldPlay, shaderId }: BackgroundMusicProps) {
   const { camera } = useThree();
 
   useEffect(() => {
-    if (!shouldPlay || globalAudio.started) return;
+    if (!shouldPlay) return;
 
-    if (globalAudio.loaded) {
-      startBackgroundMusicNow(camera);
-    } else {
+    // Initialize audio listener if needed
+    initAudioListener(camera);
+
+    // Try to play the track
+    const tryPlay = () => {
+      const buffer = getAudioBufferForShader(shaderId);
+      if (buffer) {
+        playTrackForShader(shaderId);
+        return true;
+      }
+      return false;
+    };
+
+    // If buffer not ready, poll until it is
+    if (!tryPlay()) {
       const checkInterval = setInterval(() => {
-        if (globalAudio.loaded && !globalAudio.started) {
-          startBackgroundMusicNow(camera);
+        if (tryPlay()) {
           clearInterval(checkInterval);
         }
       }, 100);
       return () => clearInterval(checkInterval);
     }
+  }, [camera, shouldPlay, shaderId]);
 
-    return () => {
-      if (globalAudio.audio?.isPlaying) {
-        globalAudio.audio.stop();
-      }
-      if (globalAudio.listener) {
-        camera.remove(globalAudio.listener);
-      }
-    };
-  }, [camera, shouldPlay]);
+  // Switch tracks when shader changes
+  useEffect(() => {
+    if (shouldPlay && globalAudio.initialized) {
+      playTrackForShader(shaderId);
+    }
+  }, [shaderId, shouldPlay]);
 
   return null;
+}
+
+// BPM-based pulse calculator
+const BPM = 85; // Adjust to match your music's BPM
+
+function useBPMPulse(bpm: number, enabled: boolean) {
+  const [pulse, setPulse] = useState(0);
+
+  useEffect(() => {
+    if (!enabled) return;
+
+    const msPerBeat = 60000 / bpm;
+    const startTime = Date.now();
+
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      const beatProgress = (elapsed % msPerBeat) / msPerBeat;
+      // Sharp attack, exponential decay
+      const pulseValue = Math.pow(1 - beatProgress, 3);
+      setPulse(pulseValue);
+    }, 16); // ~60fps
+
+    return () => clearInterval(interval);
+  }, [bpm, enabled]);
+
+  return pulse;
 }
 
 function App() {
   const [selectedShader, setSelectedShader] = useState<string | null>(null);
   const [vrError, setVrError] = useState<string | null>(null);
   const [musicStarted, setMusicStarted] = useState(false);
-  const [speed, setSpeed] = useState(0.5);
+  const [speed, setSpeed] = useState(1.0);
+  const [brightness, setBrightness] = useState(1.0);
+  const [colorShift, setColorShift] = useState(0.0);
+  const [zoom, setZoom] = useState(0.0);
   const { audioData, toggleListening } = useAudioAnalyzer();
 
+  // BPM pulse for audio-reactive effects
+  const pulse = useBPMPulse(BPM, musicStarted && selectedShader === 'abstract-waves');
+
   const handleSpeedChange = useCallback((delta: number) => {
-    setSpeed(prev => Math.max(0, Math.min(2.0, prev + delta)));
+    setSpeed(prev => Math.max(0.1, Math.min(3.0, prev + delta)));
+  }, []);
+
+  const handleBrightnessChange = useCallback((delta: number) => {
+    setBrightness(prev => Math.max(0.2, Math.min(2.0, prev + delta)));
+  }, []);
+
+  const handleColorShiftChange = useCallback((delta: number) => {
+    setColorShift(prev => (prev + delta) % 3.0);
+  }, []);
+
+  const handleZoomChange = useCallback((delta: number) => {
+    setZoom(prev => Math.max(-1.0, Math.min(1.0, prev + delta)));
   }, []);
 
   const checkVRSupport = useCallback(async () => {
@@ -355,9 +471,23 @@ function App() {
         <XR store={store}>
           <XROrigin position={[0, 0, 0]} />
           <Suspense fallback={null}>
-            <ShaderRenderer shaderId={selectedShader} audioData={audioData} speed={speed} />
-            <VRControllerHandler onBack={handleBack} onSpeedChange={handleSpeedChange} />
-            <BackgroundMusic shouldPlay={musicStarted} />
+            <ShaderRenderer
+              shaderId={selectedShader}
+              audioData={audioData}
+              speed={speed}
+              pulse={pulse}
+              brightness={brightness}
+              colorShift={colorShift}
+              zoom={zoom}
+            />
+            <VRControllerHandler
+              onBack={handleBack}
+              onSpeedChange={handleSpeedChange}
+              onBrightnessChange={handleBrightnessChange}
+              onColorShiftChange={handleColorShiftChange}
+              onZoomChange={handleZoomChange}
+            />
+            <BackgroundMusic shouldPlay={musicStarted} shaderId={selectedShader} />
           </Suspense>
         </XR>
       </Canvas>
