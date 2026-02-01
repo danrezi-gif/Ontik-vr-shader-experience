@@ -27,8 +27,8 @@ export const SHADERS: ShaderInfo[] = [
   },
   {
     id: 'tunnel-lights',
-    name: 'The Mirror of Lights - Tunnel',
-    description: 'Journey through a luminous tunnel toward the light',
+    name: 'The Luminous Path',
+    description: 'A sacred passage toward the divine light',
     color: '#4488ff'
   },
   {
