@@ -32,6 +32,12 @@ export const SHADERS: ShaderInfo[] = [
     color: '#4488ff'
   },
   {
+    id: 'infinite-light',
+    name: 'Infinite Light',
+    description: 'One light becomes infinite - a Kusama-inspired meditation',
+    color: '#ffcc66'
+  },
+  {
     id: 'sunset-clouds',
     name: 'Sunset Clouds',
     description: 'Turbulent atmospheric clouds at golden hour',
