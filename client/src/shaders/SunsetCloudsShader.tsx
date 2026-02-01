@@ -34,7 +34,7 @@ const fragmentShader = `
     // Ray direction for raymarch (screen-space)
     vec3 rd = normalize(vec3(uv * 2.0, -1.0));
 
-    for(float iter = 0.0; iter < 40.0; iter++) {
+    for(float iter = 0.0; iter < 50.0; iter++) {
       i = iter;
 
       // Compute raymarch sample point
@@ -43,22 +43,22 @@ const fragmentShader = `
       // Forward motion - flying through clouds (speed controlled)
       p.z -= t * iSpeed;
 
-      // Turbulence - unrolled for mobile GPU (5 octaves for performance)
+      // Turbulence - unrolled for mobile GPU (6 octaves)
       p += 0.12 * sin(p.yzx * 5.0 - 0.2 * t);
       p += 0.06 * sin(p.yzx * 10.0 - 0.2 * t);
       p += 0.03 * sin(p.yzx * 20.0 - 0.2 * t);
       p += 0.015 * sin(p.yzx * 40.0 - 0.2 * t);
       p += 0.0075 * sin(p.yzx * 80.0 - 0.2 * t);
+      p += 0.00375 * sin(p.yzx * 160.0 - 0.2 * t);
 
       // Compute distance (smaller steps in clouds when s is negative)
       s = 0.3 - abs(p.y);
       d = 0.005 + max(s, -s * 0.2) / 4.0;
       z += d;
 
-      // Simpler linear brightness (reduces precision artifacts on mobile GPU)
-      float brightness = max(0.0, 1.0 + s * 8.0);
-      // Larger minimum d to prevent bright spots
-      float safeD = max(0.02, d);
+      // Original brightness with clamping
+      float brightness = max(0.0, min(8.0, 1.0 + s * 10.0 + s * s * 30.0));
+      float safeD = max(0.01, d);
       O += (cos(s / 0.07 + p.x + 0.5 * t - vec4(3.0, 4.0, 5.0, 0.0)) + 1.5) * brightness / safeD;
     }
 
