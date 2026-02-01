@@ -113,8 +113,12 @@ export function AbstractWavesShader({
     }
   });
 
+  // Tilt sphere forward so top pole is visible in upper third of view
+  // 35 degrees = ~0.61 radians
+  const tiltAngle = 35 * (Math.PI / 180);
+
   return (
-    <mesh ref={meshRef} scale={[-1, 1, 1]}>
+    <mesh ref={meshRef} scale={[-1, 1, 1]} rotation={[tiltAngle, 0, 0]}>
       <sphereGeometry args={[50, 64, 32]} />
       <shaderMaterial
         vertexShader={vertexShader}
