@@ -27,11 +27,14 @@ const fragmentShader = `
     float s = 0.0;
     vec4 O = vec4(0.0);
 
+    // Ray direction for fog calculation
+    vec3 rd = normalize(vec3(uv * 2.0, -1.0));
+
     for(float iter = 0.0; iter < 50.0; iter++) {
       i = iter;
 
       // Compute raymarch sample point
-      vec3 p = z * normalize(vec3(uv * 2.0, -1.0));
+      vec3 p = z * rd;
 
       // Forward motion - flying through clouds (speed controlled)
       p.z -= t * iSpeed;
@@ -57,6 +60,16 @@ const fragmentShader = `
 
     // Tanh tonemapping
     O = tanh(O * O / 4e8);
+
+    // Fog to hide seams at edges (below, above, behind)
+    // Based on vertical angle (y component of ray direction)
+    float verticalFade = 1.0 - smoothstep(0.6, 1.0, abs(rd.y));
+    // Based on looking backward (positive z means looking back on sphere interior)
+    float behindFade = 1.0 - smoothstep(0.3, 0.8, rd.z);
+    // Combine fades
+    float fog = verticalFade * behindFade;
+
+    O.rgb *= fog;
 
     gl_FragColor = vec4(O.rgb, 1.0);
   }
