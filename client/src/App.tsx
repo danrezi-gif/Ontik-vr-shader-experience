@@ -323,6 +323,7 @@ function HandGlows() {
 const SHADER_AUDIO: { [key: string]: string } = {
   'abstract-waves': 'The Birth of the Holy.mp3',
   'tunnel-lights': 'Russian chant - Покаяния отверзи ми двери.mp3',
+  'infinite-light': 'György Ligeti_ Lux Aeterna.mp3',
   'default': 'background-music.mp3'
 };
 
