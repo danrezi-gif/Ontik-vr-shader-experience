@@ -421,7 +421,7 @@ function App() {
   const [introProgress, setIntroProgress] = useState(0);
   const [introComplete, setIntroComplete] = useState(false);
   const [speed, setSpeed] = useState(1.0);
-  const [baseBrightness, setBaseBrightness] = useState(1.0);
+  const [baseBrightness, setBaseBrightness] = useState(1.5);
   const [colorShift, setColorShift] = useState(0.0);
   const [zoom, setZoom] = useState(0.0);
   const { audioData, toggleListening } = useAudioAnalyzer();
