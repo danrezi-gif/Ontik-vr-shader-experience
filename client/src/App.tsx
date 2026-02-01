@@ -141,10 +141,25 @@ interface VRControllerHandlerProps {
 
 function VRControllerHandler({ onBack, onSpeedChange }: VRControllerHandlerProps) {
   const lastButtonStates = useRef<{ [key: string]: boolean }>({});
+  const audioResumed = useRef(false);
 
   useFrame((state) => {
     const session = state.gl.xr.getSession();
     if (!session?.inputSources) return;
+
+    // Resume audio context when in VR (Quest suspends it on VR entry)
+    if (!audioResumed.current && globalAudio.listener) {
+      const ctx = globalAudio.listener.context;
+      if (ctx.state === 'suspended') {
+        ctx.resume().then(() => {
+          if (globalAudio.audio && !globalAudio.audio.isPlaying) {
+            globalAudio.audio.play();
+          }
+          console.log('Audio resumed in VR');
+        });
+      }
+      audioResumed.current = true;
+    }
 
     session.inputSources.forEach((inputSource) => {
       if (!inputSource.gamepad) return;
