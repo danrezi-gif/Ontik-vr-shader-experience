@@ -339,13 +339,35 @@ Object.entries(SHADER_AUDIO).forEach(([key, filename]) => {
 
 const globalAudio = {
   audio: null as THREE.Audio | null,
+  positionalAudio: null as THREE.PositionalAudio | null,
   listener: null as THREE.AudioListener | null,
   currentTrack: null as string | null,
-  initialized: false
+  initialized: false,
+  convolver: null as ConvolverNode | null,
+  reverbGain: null as GainNode | null
 };
+
+// Shaders that use positional audio from a specific location
+const POSITIONAL_AUDIO_SHADERS = ['tunnel-lights'];
 
 function getAudioBufferForShader(shaderId: string): AudioBuffer | null {
   return audioBuffers[shaderId] || audioBuffers['default'] || null;
+}
+
+// Create impulse response for reverb (cathedral-like)
+function createReverbImpulse(context: AudioContext, duration: number, decay: number): AudioBuffer {
+  const sampleRate = context.sampleRate;
+  const length = sampleRate * duration;
+  const impulse = context.createBuffer(2, length, sampleRate);
+
+  for (let channel = 0; channel < 2; channel++) {
+    const channelData = impulse.getChannelData(channel);
+    for (let i = 0; i < length; i++) {
+      // Exponential decay with some randomness for natural reverb
+      channelData[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, decay);
+    }
+  }
+  return impulse;
 }
 
 function initAudioListener(camera: THREE.Camera) {
@@ -356,14 +378,37 @@ function initAudioListener(camera: THREE.Camera) {
   camera.add(listener);
   globalAudio.listener = listener;
 
+  // Create regular audio for non-positional shaders
   const audio = new THREE.Audio(listener);
   audio.setLoop(true);
   audio.setVolume(0.3);
   globalAudio.audio = audio;
+
+  // Create positional audio for spatial shaders
+  const positionalAudio = new THREE.PositionalAudio(listener);
+  positionalAudio.setLoop(true);
+  positionalAudio.setVolume(0.6);
+  positionalAudio.setRefDistance(20); // Distance at which volume is full
+  positionalAudio.setMaxDistance(2000); // Max distance for attenuation
+  positionalAudio.setRolloffFactor(0.3); // Gentle rolloff for large space
+  positionalAudio.setDistanceModel('exponential');
+  globalAudio.positionalAudio = positionalAudio;
+
+  // Create reverb effect
+  const ctx = listener.context;
+  const convolver = ctx.createConvolver();
+  const reverbGain = ctx.createGain();
+  reverbGain.gain.value = 0.4; // Reverb wet mix
+
+  // Create cathedral-like reverb (3 second decay)
+  convolver.buffer = createReverbImpulse(ctx, 3.0, 2.5);
+
+  globalAudio.convolver = convolver;
+  globalAudio.reverbGain = reverbGain;
 }
 
 function playTrackForShader(shaderId: string) {
-  if (!globalAudio.audio || !globalAudio.listener) return;
+  if (!globalAudio.listener) return;
 
   const buffer = getAudioBufferForShader(shaderId);
   if (!buffer) {
@@ -371,39 +416,75 @@ function playTrackForShader(shaderId: string) {
     return;
   }
 
-  // If same track is already playing, don't restart
-  if (globalAudio.currentTrack === shaderId && globalAudio.audio.isPlaying) {
+  const isPositional = POSITIONAL_AUDIO_SHADERS.includes(shaderId);
+  const activeAudio = isPositional ? globalAudio.positionalAudio : globalAudio.audio;
+  const inactiveAudio = isPositional ? globalAudio.audio : globalAudio.positionalAudio;
+
+  if (!activeAudio) return;
+
+  // If same track is already playing on correct audio type, don't restart
+  if (globalAudio.currentTrack === shaderId && activeAudio.isPlaying) {
     return;
   }
 
-  // Stop current track if playing
-  if (globalAudio.audio.isPlaying) {
+  // Stop both audio types
+  if (globalAudio.audio?.isPlaying) {
     globalAudio.audio.stop();
   }
+  if (globalAudio.positionalAudio?.isPlaying) {
+    globalAudio.positionalAudio.stop();
+  }
 
-  // Set new buffer and play
-  globalAudio.audio.setBuffer(buffer);
+  // Set new buffer
+  activeAudio.setBuffer(buffer);
   globalAudio.currentTrack = shaderId;
+
+  // Connect reverb for positional audio
+  if (isPositional && globalAudio.convolver && globalAudio.reverbGain) {
+    const ctx = globalAudio.listener.context;
+    try {
+      // Get the audio source and connect through reverb
+      const source = (activeAudio as any).source;
+      if (source) {
+        // Dry signal goes direct, wet goes through reverb
+        source.connect(globalAudio.convolver);
+        globalAudio.convolver.connect(globalAudio.reverbGain);
+        globalAudio.reverbGain.connect(ctx.destination);
+      }
+    } catch (e) {
+      // Reverb connection may fail on first play, that's ok
+    }
+  }
 
   const ctx = globalAudio.listener.context;
   if (ctx.state === 'suspended') {
     ctx.resume().then(() => {
-      globalAudio.audio?.play();
-      console.log('Playing track for:', shaderId);
+      activeAudio.play();
+      console.log('Playing track for:', shaderId, isPositional ? '(positional + reverb)' : '(standard)');
     });
   } else {
-    globalAudio.audio.play();
-    console.log('Playing track for:', shaderId);
+    activeAudio.play();
+    console.log('Playing track for:', shaderId, isPositional ? '(positional + reverb)' : '(standard)');
   }
 }
 
 interface BackgroundMusicProps {
   shouldPlay: boolean;
   shaderId: string;
+  headRotationY?: number;
 }
 
-function BackgroundMusic({ shouldPlay, shaderId }: BackgroundMusicProps) {
-  const { camera } = useThree();
+function BackgroundMusic({ shouldPlay, shaderId, headRotationY = 0 }: BackgroundMusicProps) {
+  const { camera, scene } = useThree();
+  const audioMeshRef = useRef<THREE.Mesh>(null);
+
+  // Position the positional audio source at the far end of the tunnel
+  useEffect(() => {
+    if (globalAudio.positionalAudio && audioMeshRef.current) {
+      // Attach positional audio to the mesh
+      audioMeshRef.current.add(globalAudio.positionalAudio);
+    }
+  }, []);
 
   useEffect(() => {
     if (!shouldPlay) return;
@@ -438,6 +519,23 @@ function BackgroundMusic({ shouldPlay, shaderId }: BackgroundMusicProps) {
       playTrackForShader(shaderId);
     }
   }, [shaderId, shouldPlay]);
+
+  // For positional audio shaders, render an invisible mesh at the audio source location
+  const isPositional = POSITIONAL_AUDIO_SHADERS.includes(shaderId);
+
+  if (isPositional) {
+    // Position at far end of tunnel (1000 units forward, adjusted for head rotation)
+    const distance = 800;
+    const x = Math.sin(-headRotationY) * distance;
+    const z = -Math.cos(-headRotationY) * distance;
+
+    return (
+      <mesh ref={audioMeshRef} position={[x, 0, z]} visible={false}>
+        <sphereGeometry args={[1, 8, 8]} />
+        <meshBasicMaterial />
+      </mesh>
+    );
+  }
 
   return null;
 }
@@ -684,7 +782,7 @@ function App() {
               onZoomChange={handleZoomChange}
             />
             <HandGlows />
-            <BackgroundMusic shouldPlay={musicStarted} shaderId={selectedShader} />
+            <BackgroundMusic shouldPlay={musicStarted} shaderId={selectedShader} headRotationY={headRotationY} />
             {/* VR Intro animator - drives brightness fade using useFrame */}
             <VRIntroAnimator
               started={vrIntroStarted && hasIntro}
