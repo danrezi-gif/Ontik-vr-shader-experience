@@ -24,16 +24,17 @@ interface ShaderRendererProps {
   brightness: number;
   colorShift: number;
   zoom: number;
+  headRotationY: number;
 }
 
-function ShaderRenderer({ shaderId, audioData, speed, pulse, brightness, colorShift, zoom }: ShaderRendererProps) {
+function ShaderRenderer({ shaderId, audioData, speed, pulse, brightness, colorShift, zoom, headRotationY }: ShaderRendererProps) {
   switch (shaderId) {
     case 'audio-reactive':
       return <VRShaderScene audioData={audioData} paletteIndex={0} />;
     case 'morphing-blobs':
       return <MorphingBlobsShader />;
     case 'abstract-waves':
-      return <AbstractWavesShader speed={speed} brightness={brightness} colorShift={colorShift} zoom={zoom} pulse={pulse} />;
+      return <AbstractWavesShader speed={speed} brightness={brightness} colorShift={colorShift} zoom={zoom} pulse={pulse} headRotationY={headRotationY} />;
     case 'sunset-clouds':
       return <SunsetCloudsShader speed={speed} />;
     case 'spiral-tunnel':
@@ -374,6 +375,33 @@ function useBPMPulse(bpm: number, enabled: boolean) {
   return pulse;
 }
 
+// Captures initial head rotation when VR starts
+interface HeadRotationCaptureProps {
+  shouldCapture: boolean;
+  onCapture: (rotation: number) => void;
+}
+
+function HeadRotationCapture({ shouldCapture, onCapture }: HeadRotationCaptureProps) {
+  const { camera } = useThree();
+  const capturedRef = useRef(false);
+
+  useFrame(() => {
+    if (!shouldCapture) {
+      capturedRef.current = false;
+      return;
+    }
+
+    if (!capturedRef.current) {
+      // Get camera Y rotation (horizontal look direction)
+      const euler = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ');
+      onCapture(euler.y);
+      capturedRef.current = true;
+    }
+  });
+
+  return null;
+}
+
 // VR Intro animator - runs inside Canvas using useFrame for reliable VR animation
 interface VRIntroAnimatorProps {
   started: boolean;
@@ -420,6 +448,7 @@ function App() {
   const [vrIntroStarted, setVrIntroStarted] = useState(false);
   const [introProgress, setIntroProgress] = useState(0);
   const [introComplete, setIntroComplete] = useState(false);
+  const [headRotationY, setHeadRotationY] = useState(0);
   const [speed, setSpeed] = useState(1.0);
   const [baseBrightness, setBaseBrightness] = useState(1.5);
   const [colorShift, setColorShift] = useState(0.0);
@@ -441,6 +470,10 @@ function App() {
 
   const handleIntroComplete = useCallback(() => {
     setIntroComplete(true);
+  }, []);
+
+  const handleHeadRotationCapture = useCallback((rotation: number) => {
+    setHeadRotationY(rotation);
   }, []);
 
   const handleSpeedChange = useCallback((delta: number) => {
@@ -490,6 +523,7 @@ function App() {
     setVrIntroStarted(false);
     setIntroProgress(0);
     setIntroComplete(false);
+    setHeadRotationY(0);
     setVrError(null);
   }, []);
 
@@ -532,6 +566,11 @@ function App() {
         <XR store={store}>
           <XROrigin position={[0, 0, 0]} />
           <Suspense fallback={null}>
+            {/* Capture head rotation when VR starts */}
+            <HeadRotationCapture
+              shouldCapture={vrIntroStarted}
+              onCapture={handleHeadRotationCapture}
+            />
             <ShaderRenderer
               shaderId={selectedShader}
               audioData={audioData}
@@ -540,6 +579,7 @@ function App() {
               brightness={brightness}
               colorShift={colorShift}
               zoom={zoom}
+              headRotationY={headRotationY}
             />
             <VRControllerHandler
               onBack={handleBack}
