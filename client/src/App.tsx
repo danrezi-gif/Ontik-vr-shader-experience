@@ -1,7 +1,6 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Suspense, useState, useCallback, useRef, useEffect } from "react";
 import { XR, createXRStore, XROrigin } from "@react-three/xr";
-import { Text } from "@react-three/drei";
 import { VRShaderScene } from "./components/VRShaderScene";
 import { ShaderGallery } from "./components/ShaderGallery";
 import { MorphingBlobsShader } from "./shaders/MorphingBlobsShader";
@@ -512,7 +511,7 @@ function useIntroSequence(shaderId: string, started: boolean): IntroState {
   return state;
 }
 
-// 3D Text component for VR intro question - renders in the 3D scene
+// 3D Text component for VR intro question - uses canvas texture for compatibility
 interface IntroText3DProps {
   question: string;
   opacity: number;
@@ -520,42 +519,76 @@ interface IntroText3DProps {
 }
 
 function IntroText3D({ question, opacity, initialRotation }: IntroText3DProps) {
-  const textRef = useRef<THREE.Mesh>(null);
+  const meshRef = useRef<THREE.Mesh>(null);
+  const textureRef = useRef<THREE.CanvasTexture | null>(null);
 
-  // Animate text opacity via material
+  // Create canvas texture for text
+  useEffect(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.fillStyle = 'transparent';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = 'white';
+      ctx.font = '300 48px "Space Grotesk", Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      // Word wrap
+      const words = question.split(' ');
+      let lines: string[] = [];
+      let currentLine = '';
+      const maxWidth = 900;
+
+      for (const word of words) {
+        const testLine = currentLine ? `${currentLine} ${word}` : word;
+        const metrics = ctx.measureText(testLine);
+        if (metrics.width > maxWidth && currentLine) {
+          lines.push(currentLine);
+          currentLine = word;
+        } else {
+          currentLine = testLine;
+        }
+      }
+      if (currentLine) lines.push(currentLine);
+
+      const lineHeight = 60;
+      const startY = canvas.height / 2 - ((lines.length - 1) * lineHeight) / 2;
+      lines.forEach((line, i) => {
+        ctx.fillText(line, canvas.width / 2, startY + i * lineHeight);
+      });
+
+      textureRef.current = new THREE.CanvasTexture(canvas);
+      textureRef.current.needsUpdate = true;
+    }
+  }, [question]);
+
+  // Update opacity
   useFrame(() => {
-    if (textRef.current) {
-      const material = textRef.current.material as THREE.MeshBasicMaterial;
+    if (meshRef.current) {
+      const material = meshRef.current.material as THREE.MeshBasicMaterial;
       if (material) {
         material.opacity = opacity;
       }
     }
   });
 
-  if (opacity <= 0) return null;
+  if (opacity <= 0 || !textureRef.current) return null;
 
   return (
     <group rotation={[0, initialRotation, 0]}>
-      <Text
-        ref={textRef}
-        position={[0, 0, -4]}
-        fontSize={0.3}
-        maxWidth={5}
-        lineHeight={1.4}
-        letterSpacing={0.02}
-        textAlign="center"
-        font="https://fonts.gstatic.com/s/spacegrotesk/v16/V8mDoQDjQSkFtoMM3T6r8E7mPb54C_k3HqUtEw.woff"
-        anchorX="center"
-        anchorY="middle"
-      >
-        {question}
+      <mesh ref={meshRef} position={[0, 0, -4]}>
+        <planeGeometry args={[4, 1]} />
         <meshBasicMaterial
-          color="#ffffff"
+          map={textureRef.current}
           transparent
           opacity={opacity}
           depthWrite={false}
+          side={THREE.DoubleSide}
         />
-      </Text>
+      </mesh>
     </group>
   );
 }
