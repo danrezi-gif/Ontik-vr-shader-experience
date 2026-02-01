@@ -21,8 +21,8 @@ export const SHADERS: ShaderInfo[] = [
   },
   {
     id: 'abstract-waves',
-    name: 'Abstract Waves',
-    description: 'Minimalist warm-toned undulating surface',
+    name: 'The Mirror of Lights',
+    description: 'Infinite reflections dancing on a luminous surface',
     color: '#ffa500'
   },
   {
