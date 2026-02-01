@@ -16,7 +16,13 @@ import * as THREE from "three";
 const store = createXRStore();
 
 // Shader component mapping
-function ShaderRenderer({ shaderId, audioData }: { shaderId: string; audioData: any }) {
+interface ShaderRendererProps {
+  shaderId: string;
+  audioData: any;
+  speed: number;
+}
+
+function ShaderRenderer({ shaderId, audioData, speed }: ShaderRendererProps) {
   switch (shaderId) {
     case 'audio-reactive':
       return <VRShaderScene audioData={audioData} paletteIndex={0} />;
@@ -25,7 +31,7 @@ function ShaderRenderer({ shaderId, audioData }: { shaderId: string; audioData: 
     case 'abstract-waves':
       return <AbstractWavesShader />;
     case 'sunset-clouds':
-      return <SunsetCloudsShader />;
+      return <SunsetCloudsShader speed={speed} />;
     case 'spiral-tunnel':
       return <SpiralTunnelShader />;
     case 'bokeh-lights':
@@ -130,9 +136,10 @@ function ControlButtons({ onEnterVR, onBack, vrError, shaderName }: ControlButto
 
 interface VRControllerHandlerProps {
   onBack: () => void;
+  onSpeedChange: (delta: number) => void;
 }
 
-function VRControllerHandler({ onBack }: VRControllerHandlerProps) {
+function VRControllerHandler({ onBack, onSpeedChange }: VRControllerHandlerProps) {
   const lastButtonStates = useRef<{ [key: string]: boolean }>({});
 
   useFrame((state) => {
@@ -145,8 +152,15 @@ function VRControllerHandler({ onBack }: VRControllerHandlerProps) {
       const gamepad = inputSource.gamepad;
       const handedness = inputSource.handedness;
 
-      // B button or Y button to go back
       if (handedness === 'right') {
+        // A button (button 4) = increase speed
+        const aPressed = gamepad.buttons[4]?.pressed || false;
+        if (aPressed && !lastButtonStates.current['a']) {
+          onSpeedChange(0.1);
+        }
+        lastButtonStates.current['a'] = aPressed;
+
+        // B button (button 5) = go back
         const bPressed = gamepad.buttons[5]?.pressed || false;
         if (bPressed && !lastButtonStates.current['b']) {
           onBack();
@@ -155,6 +169,14 @@ function VRControllerHandler({ onBack }: VRControllerHandlerProps) {
       }
 
       if (handedness === 'left') {
+        // X button (button 4) = decrease speed
+        const xPressed = gamepad.buttons[4]?.pressed || false;
+        if (xPressed && !lastButtonStates.current['x']) {
+          onSpeedChange(-0.1);
+        }
+        lastButtonStates.current['x'] = xPressed;
+
+        // Y button (button 5) = go back
         const yPressed = gamepad.buttons[5]?.pressed || false;
         if (yPressed && !lastButtonStates.current['y']) {
           onBack();
@@ -249,7 +271,12 @@ function App() {
   const [selectedShader, setSelectedShader] = useState<string | null>(null);
   const [vrError, setVrError] = useState<string | null>(null);
   const [musicStarted, setMusicStarted] = useState(false);
+  const [speed, setSpeed] = useState(0.5);
   const { audioData, toggleListening } = useAudioAnalyzer();
+
+  const handleSpeedChange = useCallback((delta: number) => {
+    setSpeed(prev => Math.max(0, Math.min(2.0, prev + delta)));
+  }, []);
 
   const checkVRSupport = useCallback(async () => {
     if (navigator.xr) {
@@ -317,8 +344,8 @@ function App() {
       >
         <XR store={store}>
           <Suspense fallback={null}>
-            <ShaderRenderer shaderId={selectedShader} audioData={audioData} />
-            <VRControllerHandler onBack={handleBack} />
+            <ShaderRenderer shaderId={selectedShader} audioData={audioData} speed={speed} />
+            <VRControllerHandler onBack={handleBack} onSpeedChange={handleSpeedChange} />
             <BackgroundMusic shouldPlay={musicStarted} />
           </Suspense>
         </XR>

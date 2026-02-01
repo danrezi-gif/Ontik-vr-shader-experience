@@ -12,6 +12,7 @@ const vertexShader = `
 
 const fragmentShader = `
   uniform float iTime;
+  uniform float iSpeed;
   uniform vec2 iResolution;
   varying vec2 vUv;
 
@@ -32,8 +33,8 @@ const fragmentShader = `
       // Compute raymarch sample point
       vec3 p = z * normalize(vec3(uv * 2.0, -1.0));
 
-      // Forward motion - flying through clouds
-      p.z -= t * 0.5;
+      // Forward motion - flying through clouds (speed controlled)
+      p.z -= t * iSpeed;
 
       // Turbulence - unrolled for mobile GPU (was nested loop)
       p += 0.12 * sin(p.yzx * 5.0 - 0.2 * t);
@@ -59,11 +60,16 @@ const fragmentShader = `
   }
 `;
 
-export function SunsetCloudsShader() {
+interface SunsetCloudsShaderProps {
+  speed?: number;
+}
+
+export function SunsetCloudsShader({ speed = 0.5 }: SunsetCloudsShaderProps) {
   const meshRef = useRef<THREE.Mesh>(null);
 
   const uniforms = useMemo(() => ({
     iTime: { value: 0 },
+    iSpeed: { value: speed },
     iResolution: { value: new THREE.Vector2(1920, 1080) }
   }), []);
 
@@ -71,6 +77,7 @@ export function SunsetCloudsShader() {
     if (meshRef.current) {
       const material = meshRef.current.material as THREE.ShaderMaterial;
       material.uniforms.iTime.value = state.clock.elapsedTime;
+      material.uniforms.iSpeed.value = speed;
     }
   });
 
