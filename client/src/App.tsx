@@ -1,6 +1,6 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Suspense, useState, useCallback, useRef, useEffect } from "react";
-import { XR, createXRStore } from "@react-three/xr";
+import { XR, createXRStore, XROrigin } from "@react-three/xr";
 import { VRShaderScene } from "./components/VRShaderScene";
 import { ShaderGallery } from "./components/ShaderGallery";
 import { MorphingBlobsShader } from "./shaders/MorphingBlobsShader";
@@ -336,6 +336,7 @@ function App() {
         style={{ width: '100%', height: '100%' }}
       >
         <XR store={store}>
+          <XROrigin position={[0, 0, 0]} />
           <Suspense fallback={null}>
             <ShaderRenderer shaderId={selectedShader} audioData={audioData} speed={speed} />
             <VRControllerHandler onBack={handleBack} onSpeedChange={handleSpeedChange} />
