@@ -29,7 +29,7 @@ export const SHADERS: ShaderInfo[] = [
     id: 'tunnel-lights',
     name: 'The Mirror of Lights - Tunnel',
     description: 'Journey through a luminous tunnel toward the light',
-    color: '#ffcc00'
+    color: '#4488ff'
   },
   {
     id: 'sunset-clouds',

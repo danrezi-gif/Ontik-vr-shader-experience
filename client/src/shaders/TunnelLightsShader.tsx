@@ -68,15 +68,15 @@ const fragmentShader = `
       o += (9.0 * iterMult - cos(p.y / 0.2) / (0.1 + d)) / d / z;
     }
 
-    // Color with shift and brightness
-    vec3 colorBase = vec3(9.0 + iColorShift * 3.0, 3.0 + iColorShift, 1.0);
+    // Color with shift and brightness - blue palette
+    vec3 colorBase = vec3(1.0, 3.0 + iColorShift, 9.0 + iColorShift * 3.0);
     o = tanh(vec4(colorBase, 0.0) * o * iBrightness / 6e3);
 
     // Tunnel end glow - the far end of the tunnel glows bright
     // iTunnelEnd controls how close the light source is (0 = far, 1 = reached)
     float endDistance = 1.0 - iTunnelEnd; // 1 = far, 0 = close
     float tunnelEndProximity = smoothstep(endDistance, endDistance - 0.3, vDepth);
-    vec3 glowColor = vec3(1.0, 0.95, 0.85); // Warm bright glow
+    vec3 glowColor = vec3(0.7, 0.85, 1.0); // Cool blue-white glow
     float glowIntensity = tunnelEndProximity * (1.0 + iTunnelEnd * 0.5);
     o.rgb += glowColor * glowIntensity * iBrightness;
 
