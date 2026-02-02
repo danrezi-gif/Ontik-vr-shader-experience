@@ -24,6 +24,21 @@ const fragmentShader = `
   varying vec3 vPosition;
   varying vec3 vWorldPosition;
 
+  // Hash function for pseudo-random values per light
+  float hash(vec3 p) {
+    p = fract(p * vec3(443.8975, 397.2973, 491.1871));
+    p += dot(p, p.yxz + 19.19);
+    return fract((p.x + p.y) * p.z);
+  }
+
+  vec3 hash3(vec3 p) {
+    return vec3(
+      hash(p),
+      hash(p + vec3(127.1, 311.7, 74.7)),
+      hash(p + vec3(269.5, 183.3, 246.1))
+    );
+  }
+
   void main() {
     // Ray direction from center toward sphere surface
     vec3 rd = normalize(vWorldPosition);
@@ -31,70 +46,91 @@ const fragmentShader = `
     // Background - pure void
     vec3 col = vec3(0.0);
 
-    // Grid spacing - dense like room of mirrors
-    vec3 spacing = vec3(4.0);
-
-    // Light properties - static, no breathing
-    float coreRadius = 0.08;
-    float glowRadius = 0.6;
-
-    // Cool white color palette
-    vec3 coreColor = vec3(1.0, 1.0, 1.0); // Pure white core
-    vec3 glowColor = vec3(0.7, 0.85, 1.0); // Cool blue-white glow
+    // Dense grid spacing - Kusama infinity room density
+    float spacing = 1.8;
 
     // Raymarching through infinite grid
-    float t = 0.0;
-    float totalLight = 0.0;
+    float t = 0.1;
 
-    for(int i = 0; i < 64; i++) {
+    for(int i = 0; i < 100; i++) {
       vec3 p = rd * t;
 
-      // Infinite grid repetition
-      vec3 q = mod(p + spacing * 0.5, spacing) - spacing * 0.5;
+      // Get grid cell ID for this point
+      vec3 cellId = floor(p / spacing);
+
+      // Infinite grid repetition - position within cell
+      vec3 q = mod(p, spacing) - spacing * 0.5;
+
+      // Get random values for this specific light
+      vec3 rand = hash3(cellId);
+      float randSize = rand.x;
+      float randColor = rand.y;
+      float randBright = rand.z;
+
+      // Vary light size - some large, many small (like Kusama)
+      float lightSize = 0.02 + randSize * 0.06;
 
       // Distance to light center
       float d = length(q);
 
-      // Two-layer glow: bright core + soft halo
-      // Core - small, bright
-      float core = smoothstep(coreRadius, 0.0, d) * 2.0;
+      // Star-like glow with sharp core
+      float core = smoothstep(lightSize, lightSize * 0.3, d);
+      float glow = lightSize * 0.8 / (d + 0.02);
+      glow = glow * glow * 0.08;
 
-      // Halo - larger, softer
-      float halo = glowRadius / (d + 0.1);
-      halo = halo * halo * 0.15;
+      float light = core * 1.5 + glow;
 
-      // Combine
-      float light = core + halo;
+      // Brightness variation per light
+      light *= 0.5 + randBright * 0.8;
 
-      // Distance fade - lights further away are dimmer
-      float distanceFade = 1.0 / (1.0 + t * 0.03);
+      // Distance fade - further lights dimmer
+      float distanceFade = 1.0 / (1.0 + t * 0.025);
+      light *= distanceFade;
 
-      totalLight += light * distanceFade;
+      // Color palette - mix of warm and cool like Kusama
+      // Blue-dominant with occasional warm accents
+      vec3 lightColor;
+      if (randColor < 0.4) {
+        // Cool blue-white (most common)
+        lightColor = vec3(0.7, 0.85, 1.0);
+      } else if (randColor < 0.55) {
+        // Pure white
+        lightColor = vec3(1.0, 1.0, 1.0);
+      } else if (randColor < 0.7) {
+        // Cyan-green
+        lightColor = vec3(0.5, 1.0, 0.8);
+      } else if (randColor < 0.82) {
+        // Warm yellow
+        lightColor = vec3(1.0, 0.9, 0.5);
+      } else if (randColor < 0.92) {
+        // Orange
+        lightColor = vec3(1.0, 0.6, 0.3);
+      } else {
+        // Red/pink accent
+        lightColor = vec3(1.0, 0.4, 0.6);
+      }
 
-      // March forward
-      t += max(d * 0.4, 0.2);
+      col += lightColor * light;
 
-      // Stop when far enough
-      if(t > 80.0) break;
+      // Adaptive step size - smaller steps near lights
+      t += max(d * 0.5, 0.15);
+
+      // Extended range for deep infinity effect
+      if(t > 120.0) break;
     }
 
-    // Apply colors - core is white, glow is cool blue
-    col += coreColor * totalLight * 0.3;
-    col += glowColor * totalLight * 0.15;
-
     // Apply brightness and intro fade
-    // Intro: darkness fades, grid revealed
     float introFade = iIntroProgress;
-    col *= iBrightness * introFade;
+    col *= iBrightness * introFade * 0.4;
 
-    // Subtle color shift support
+    // Color shift affects blue channel
     col.b += iColorShift * 0.05;
 
     // Tone mapping for smooth rolloff
-    col = col / (col + vec3(1.0));
+    col = col / (col + vec3(0.8));
 
     // Slight contrast boost
-    col = pow(col, vec3(0.95));
+    col = pow(col, vec3(0.9));
 
     gl_FragColor = vec4(col, 1.0);
   }
