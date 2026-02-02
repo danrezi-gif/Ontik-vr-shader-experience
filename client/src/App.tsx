@@ -10,6 +10,7 @@ import { SpiralTunnelShader } from "./shaders/SpiralTunnelShader";
 import { BokehLightsShader } from "./shaders/BokehLightsShader";
 import { TunnelLightsShader } from "./shaders/TunnelLightsShader";
 import { InfiniteLightShader } from "./shaders/InfiniteLightShader";
+import { SacredVesselsShader } from "./shaders/SacredVesselsShader";
 import { useAudioAnalyzer } from "./hooks/useAudioAnalyzer";
 import { SHADERS } from "./shaders";
 import "@fontsource/inter";
@@ -42,6 +43,8 @@ function ShaderRenderer({ shaderId, audioData, speed, pulse, brightness, colorSh
       return <TunnelLightsShader speed={speed} brightness={brightness} colorShift={colorShift} zoom={zoom} pulse={pulse} headRotationY={headRotationY} introProgress={introProgress} />;
     case 'infinite-light':
       return <InfiniteLightShader speed={speed} brightness={brightness} colorShift={colorShift} zoom={zoom} pulse={pulse} headRotationY={headRotationY} introProgress={introProgress} />;
+    case 'sacred-vessels':
+      return <SacredVesselsShader speed={speed} brightness={brightness} colorShift={colorShift} headRotationY={headRotationY} introProgress={introProgress} />;
     case 'sunset-clouds':
       return <SunsetCloudsShader speed={speed} />;
     case 'spiral-tunnel':
@@ -324,6 +327,7 @@ const SHADER_AUDIO: { [key: string]: string } = {
   'abstract-waves': 'The Birth of the Holy.mp3',
   'tunnel-lights': 'Russian chant - Покаяния отверзи ми двери.mp3',
   'infinite-light': 'Ligeti-Lux-Aeterna.mp3',
+  'sacred-vessels': 'Ligeti-Lux-Aeterna.mp3',
   'default': 'background-music.mp3'
 };
 
@@ -602,9 +606,10 @@ interface VRIntroAnimatorProps {
   started: boolean;
   onProgress: (progress: number) => void;
   onComplete: () => void;
+  shaderId?: string;
 }
 
-function VRIntroAnimator({ started, onProgress, onComplete }: VRIntroAnimatorProps) {
+function VRIntroAnimator({ started, onProgress, onComplete, shaderId }: VRIntroAnimatorProps) {
   const startTimeRef = useRef<number | null>(null);
   const completedRef = useRef(false);
 
@@ -622,12 +627,23 @@ function VRIntroAnimator({ started, onProgress, onComplete }: VRIntroAnimatorPro
     if (completedRef.current) return;
 
     const elapsed = Date.now() - startTimeRef.current;
-    const duration = 8000; // 8 seconds
-    const progress = Math.min(1, elapsed / duration);
+
+    // Shader-specific intro durations
+    const duration = shaderId === 'infinite-light' ? 18000 : 8000; // 18s for infinite light, 8s for others
+    const linearProgress = Math.min(1, elapsed / duration);
+
+    // Apply easing curve based on shader
+    let progress: number;
+    if (shaderId === 'infinite-light') {
+      // Ease-in-quad: slow start, speeds up (t^2)
+      progress = linearProgress * linearProgress;
+    } else {
+      progress = linearProgress;
+    }
 
     onProgress(progress);
 
-    if (progress >= 1 && !completedRef.current) {
+    if (linearProgress >= 1 && !completedRef.current) {
       completedRef.current = true;
       onComplete();
     }
@@ -651,7 +667,7 @@ function App() {
   const { audioData, toggleListening } = useAudioAnalyzer();
 
   // Calculate effective brightness (intro affects it for abstract-waves and tunnel-lights)
-  const hasIntro = selectedShader === 'abstract-waves' || selectedShader === 'tunnel-lights' || selectedShader === 'infinite-light';
+  const hasIntro = selectedShader === 'abstract-waves' || selectedShader === 'tunnel-lights' || selectedShader === 'infinite-light' || selectedShader === 'sacred-vessels';
   const isInIntro = vrIntroStarted && hasIntro && !introComplete;
   const introBrightness = 0.1 + 0.9 * introProgress; // 0.1 → 1.0
   const brightness = isInIntro ? introBrightness * baseBrightness : baseBrightness;
@@ -792,6 +808,7 @@ function App() {
               started={vrIntroStarted && hasIntro}
               onProgress={handleIntroProgress}
               onComplete={handleIntroComplete}
+              shaderId={selectedShader || undefined}
             />
           </Suspense>
         </XR>

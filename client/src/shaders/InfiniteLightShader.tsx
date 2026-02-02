@@ -29,50 +29,71 @@ const fragmentShader = `
     vec3 rd = normalize(vWorldPosition);
     vec3 col = vec3(0.0);
 
-    // Optimized for Quest 3 - balanced density vs performance
-    float spacing = 2.2;
-    float t = 0.2;
+    // === INTRO: Single light emerges, then multiplies to infinity ===
 
-    // Reduced iterations for Quest performance
-    for(int i = 0; i < 48; i++) {
-      vec3 p = rd * t;
-      vec3 cellId = floor(p / spacing);
-      vec3 q = mod(p, spacing) - spacing * 0.5;
+    // Phase 1 (0-0.15): Single central light fades in
+    // Phase 2 (0.15-1.0): Lights multiply outward to infinity
+    float singleLightPhase = smoothstep(0.0, 0.15, iIntroProgress);
+    float multiplyPhase = smoothstep(0.15, 1.0, iIntroProgress);
 
-      // Single hash call, derive all values from it
-      float h = hash(cellId);
-      float h2 = fract(h * 127.1);
-      float h3 = fract(h * 311.7);
+    // Central singular light - visible first
+    float centralDist = length(rd.xz); // Distance from vertical axis
+    float centralGlow = exp(-centralDist * centralDist * 3.0) * singleLightPhase;
+    vec3 centralColor = vec3(1.0, 0.95, 0.9); // Warm white
+    col += centralColor * centralGlow * 1.5;
 
-      // Light size variation
-      float lightSize = 0.03 + h * 0.05;
-      float d = length(q);
+    // Only show grid lights after initial phase
+    if (iIntroProgress > 0.1) {
+      float spacing = 2.2;
+      float t = 0.2;
 
-      // Enhanced glow calculation - brighter cores and halos
-      float core = smoothstep(lightSize, 0.0, d) * 3.0;
-      float glow = lightSize / (d + 0.02);
-      float halo = glow * glow * 0.4;
-      float light = core + halo;
+      // Max visible distance expands with intro progress
+      float maxRevealDist = 3.0 + multiplyPhase * 57.0; // 3 -> 60
 
-      // Brightness and distance fade combined
-      light *= (0.7 + h3 * 0.5) / (1.0 + t * 0.025);
+      for(int i = 0; i < 48; i++) {
+        vec3 p = rd * t;
+        vec3 cellId = floor(p / spacing);
+        vec3 q = mod(p, spacing) - spacing * 0.5;
 
-      // Optimized color palette - use mix instead of branches
-      vec3 coolBlue = vec3(0.7, 0.85, 1.0);
-      vec3 warmAccent = vec3(1.0, 0.8, 0.5);
-      vec3 lightColor = mix(coolBlue, warmAccent, smoothstep(0.7, 0.9, h2));
-      // Add occasional cyan/green tint
-      lightColor = mix(lightColor, vec3(0.6, 1.0, 0.85), smoothstep(0.4, 0.5, h2) * (1.0 - smoothstep(0.5, 0.6, h2)));
+        // Skip the central cell (0,0,0) to avoid doubling central light
+        if (abs(cellId.x) < 0.5 && abs(cellId.y) < 0.5 && abs(cellId.z) < 0.5) {
+          t += 0.5;
+          continue;
+        }
 
-      col += lightColor * light;
+        float h = hash(cellId);
+        float h2 = fract(h * 127.1);
+        float h3 = fract(h * 311.7);
 
-      // Larger steps for performance
-      t += max(d * 0.6, 0.3);
-      if(t > 60.0) break;
+        float lightSize = 0.03 + h * 0.05;
+        float d = length(q);
+
+        float core = smoothstep(lightSize, 0.0, d) * 3.0;
+        float glow = lightSize / (d + 0.02);
+        float halo = glow * glow * 0.4;
+        float light = core + halo;
+
+        light *= (0.7 + h3 * 0.5) / (1.0 + t * 0.025);
+
+        // Intro reveal: lights fade in based on distance from center
+        float cellDist = length(cellId) * spacing;
+        float revealFade = smoothstep(maxRevealDist, maxRevealDist - 8.0, cellDist);
+        light *= revealFade * multiplyPhase;
+
+        vec3 coolBlue = vec3(0.7, 0.85, 1.0);
+        vec3 warmAccent = vec3(1.0, 0.8, 0.5);
+        vec3 lightColor = mix(coolBlue, warmAccent, smoothstep(0.7, 0.9, h2));
+        lightColor = mix(lightColor, vec3(0.6, 1.0, 0.85), smoothstep(0.4, 0.5, h2) * (1.0 - smoothstep(0.5, 0.6, h2)));
+
+        col += lightColor * light;
+
+        t += max(d * 0.6, 0.3);
+        if(t > maxRevealDist) break;
+      }
     }
 
-    // Apply brightness and intro - boosted for visual impact
-    col *= iBrightness * iIntroProgress * 0.8;
+    // Apply brightness
+    col *= iBrightness * 0.8;
     col.b += iColorShift * 0.05;
 
     // Tone mapping
