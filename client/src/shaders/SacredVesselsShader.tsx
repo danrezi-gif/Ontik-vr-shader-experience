@@ -182,18 +182,18 @@ const fragmentShader = `
 
     // === POLE EFFECTS ===
     // Inferior pole - dark fog rising from below (hides seam, creates abyss)
-    float inferiorPole = smoothstep(-0.3, -0.9, rd.y); // Stronger near bottom
-    col = mix(col, vec3(0.0), inferiorPole * 0.95); // Fade to near-black
+    float inferiorPole = smoothstep(-0.1, -0.7, rd.y); // Extended coverage - starts higher
+    col = mix(col, vec3(0.0), inferiorPole); // Full fade to black
     // Add subtle dark blue fog tint
-    col += vec3(0.02, 0.03, 0.06) * inferiorPole;
+    col += vec3(0.01, 0.015, 0.03) * inferiorPole;
 
-    // Superior pole - divine bright glow from above (hides seam, heavenly light)
-    float superiorPole = smoothstep(0.5, 0.95, rd.y); // Stronger near top
-    vec3 divineLight = vec3(0.9, 0.95, 1.0); // Ethereal white-blue
-    col += divineLight * superiorPole * 1.5;
-    // Extra bright core at very top
-    float poleCore = smoothstep(0.85, 1.0, rd.y);
-    col += vec3(1.0, 1.0, 1.0) * poleCore * 2.0;
+    // Superior pole - subtle glow from above (preserves tunnel effect)
+    float superiorPole = smoothstep(0.7, 0.98, rd.y); // Only very top
+    vec3 divineLight = vec3(0.8, 0.85, 0.95); // Softer ethereal glow
+    col += divineLight * superiorPole * 0.6; // Reduced intensity
+    // Gentle bright core at very top
+    float poleCore = smoothstep(0.92, 1.0, rd.y);
+    col += vec3(1.0, 1.0, 1.0) * poleCore * 0.8;
 
     // Apply brightness and intro
     col *= iBrightness * iIntroProgress;
