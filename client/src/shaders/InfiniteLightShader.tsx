@@ -3,13 +3,9 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
 const vertexShader = `
-  varying vec2 vUv;
-  varying vec3 vPosition;
   varying vec3 vWorldPosition;
 
   void main() {
-    vUv = uv;
-    vPosition = position;
     vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
@@ -20,116 +16,66 @@ const fragmentShader = `
   uniform float iBrightness;
   uniform float iIntroProgress;
   uniform float iColorShift;
-  varying vec2 vUv;
-  varying vec3 vPosition;
   varying vec3 vWorldPosition;
 
-  // Hash function for pseudo-random values per light
+  // Optimized hash - single function for Quest performance
   float hash(vec3 p) {
-    p = fract(p * vec3(443.8975, 397.2973, 491.1871));
+    p = fract(p * vec3(443.897, 397.297, 491.187));
     p += dot(p, p.yxz + 19.19);
     return fract((p.x + p.y) * p.z);
   }
 
-  vec3 hash3(vec3 p) {
-    return vec3(
-      hash(p),
-      hash(p + vec3(127.1, 311.7, 74.7)),
-      hash(p + vec3(269.5, 183.3, 246.1))
-    );
-  }
-
   void main() {
-    // Ray direction from center toward sphere surface
     vec3 rd = normalize(vWorldPosition);
-
-    // Background - pure void
     vec3 col = vec3(0.0);
 
-    // Dense grid spacing - Kusama infinity room density
-    float spacing = 1.8;
+    // Optimized for Quest 3 - balanced density vs performance
+    float spacing = 2.2;
+    float t = 0.2;
 
-    // Raymarching through infinite grid
-    float t = 0.1;
-
-    for(int i = 0; i < 100; i++) {
+    // Reduced iterations for Quest performance
+    for(int i = 0; i < 48; i++) {
       vec3 p = rd * t;
-
-      // Get grid cell ID for this point
       vec3 cellId = floor(p / spacing);
-
-      // Infinite grid repetition - position within cell
       vec3 q = mod(p, spacing) - spacing * 0.5;
 
-      // Get random values for this specific light
-      vec3 rand = hash3(cellId);
-      float randSize = rand.x;
-      float randColor = rand.y;
-      float randBright = rand.z;
+      // Single hash call, derive all values from it
+      float h = hash(cellId);
+      float h2 = fract(h * 127.1);
+      float h3 = fract(h * 311.7);
 
-      // Vary light size - some large, many small (like Kusama)
-      float lightSize = 0.02 + randSize * 0.06;
-
-      // Distance to light center
+      // Light size variation
+      float lightSize = 0.03 + h * 0.05;
       float d = length(q);
 
-      // Star-like glow with sharp core
-      float core = smoothstep(lightSize, lightSize * 0.3, d);
-      float glow = lightSize * 0.8 / (d + 0.02);
-      glow = glow * glow * 0.08;
+      // Simplified glow calculation
+      float core = smoothstep(lightSize, 0.0, d);
+      float glow = lightSize / (d + 0.05);
+      float light = core * 2.0 + glow * glow * 0.1;
 
-      float light = core * 1.5 + glow;
+      // Brightness and distance fade combined
+      light *= (0.6 + h3 * 0.6) / (1.0 + t * 0.03);
 
-      // Brightness variation per light
-      light *= 0.5 + randBright * 0.8;
-
-      // Distance fade - further lights dimmer
-      float distanceFade = 1.0 / (1.0 + t * 0.025);
-      light *= distanceFade;
-
-      // Color palette - mix of warm and cool like Kusama
-      // Blue-dominant with occasional warm accents
-      vec3 lightColor;
-      if (randColor < 0.4) {
-        // Cool blue-white (most common)
-        lightColor = vec3(0.7, 0.85, 1.0);
-      } else if (randColor < 0.55) {
-        // Pure white
-        lightColor = vec3(1.0, 1.0, 1.0);
-      } else if (randColor < 0.7) {
-        // Cyan-green
-        lightColor = vec3(0.5, 1.0, 0.8);
-      } else if (randColor < 0.82) {
-        // Warm yellow
-        lightColor = vec3(1.0, 0.9, 0.5);
-      } else if (randColor < 0.92) {
-        // Orange
-        lightColor = vec3(1.0, 0.6, 0.3);
-      } else {
-        // Red/pink accent
-        lightColor = vec3(1.0, 0.4, 0.6);
-      }
+      // Optimized color palette - use mix instead of branches
+      vec3 coolBlue = vec3(0.7, 0.85, 1.0);
+      vec3 warmAccent = vec3(1.0, 0.8, 0.5);
+      vec3 lightColor = mix(coolBlue, warmAccent, smoothstep(0.7, 0.9, h2));
+      // Add occasional cyan/green tint
+      lightColor = mix(lightColor, vec3(0.6, 1.0, 0.85), smoothstep(0.4, 0.5, h2) * (1.0 - smoothstep(0.5, 0.6, h2)));
 
       col += lightColor * light;
 
-      // Adaptive step size - smaller steps near lights
-      t += max(d * 0.5, 0.15);
-
-      // Extended range for deep infinity effect
-      if(t > 120.0) break;
+      // Larger steps for performance
+      t += max(d * 0.6, 0.3);
+      if(t > 60.0) break;
     }
 
-    // Apply brightness and intro fade
-    float introFade = iIntroProgress;
-    col *= iBrightness * introFade * 0.4;
-
-    // Color shift affects blue channel
+    // Apply brightness and intro
+    col *= iBrightness * iIntroProgress * 0.5;
     col.b += iColorShift * 0.05;
 
-    // Tone mapping for smooth rolloff
+    // Tone mapping
     col = col / (col + vec3(0.8));
-
-    // Slight contrast boost
     col = pow(col, vec3(0.9));
 
     gl_FragColor = vec4(col, 1.0);
