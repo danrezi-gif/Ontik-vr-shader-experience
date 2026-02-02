@@ -24,93 +24,113 @@ const fragmentShader = `
   varying vec3 vPosition;
   varying vec3 vWorldPosition;
 
-  // Soft sphere SDF
-  float sphereSDF(vec3 p, float r) {
-    return length(p) - r;
+  // Hash function for pseudo-random values per light
+  float hash(vec3 p) {
+    p = fract(p * vec3(443.8975, 397.2973, 491.1871));
+    p += dot(p, p.yxz + 19.19);
+    return fract((p.x + p.y) * p.z);
   }
 
-  // Infinite grid repetition
-  vec3 infiniteRepeat(vec3 p, vec3 spacing) {
-    return mod(p + spacing * 0.5, spacing) - spacing * 0.5;
+  vec3 hash3(vec3 p) {
+    return vec3(
+      hash(p),
+      hash(p + vec3(127.1, 311.7, 74.7)),
+      hash(p + vec3(269.5, 183.3, 246.1))
+    );
   }
 
   void main() {
-    // Ray from camera through this fragment
-    vec3 ro = vec3(0.0); // ray origin at center
-    vec3 rd = normalize(vWorldPosition); // ray direction toward sphere surface
+    // Ray direction from center toward sphere surface
+    vec3 rd = normalize(vWorldPosition);
 
-    // Background - deep void
+    // Background - pure void
     vec3 col = vec3(0.0);
 
-    // Calculate how many reflections based on intro progress
-    // Start with 1, grow to many
-    float maxReflections = 1.0 + iIntroProgress * 60.0;
+    // Dense grid spacing - Kusama infinity room density
+    float spacing = 1.8;
 
-    // Grid spacing - starts large (single light), shrinks (infinite lights)
-    float baseSpacing = 20.0;
-    float spacingMult = mix(100.0, 1.0, smoothstep(0.0, 0.8, iIntroProgress));
-    vec3 spacing = vec3(baseSpacing * spacingMult);
+    // Raymarching through infinite grid
+    float t = 0.1;
 
-    // Light properties
-    float lightRadius = 0.3 + 0.1 * sin(iTime * 0.5); // gentle breathing
-    vec3 warmLight = vec3(1.0, 0.85, 0.6); // warm golden
-    vec3 coolLight = vec3(0.7, 0.85, 1.0); // cool accent
+    for(int i = 0; i < 100; i++) {
+      vec3 p = rd * t;
 
-    // Color shift between warm and cool
-    vec3 lightColor = mix(warmLight, coolLight, 0.5 + 0.5 * sin(iColorShift));
+      // Get grid cell ID for this point
+      vec3 cellId = floor(p / spacing);
 
-    // Raymarching
-    float t = 0.0;
-    float totalLight = 0.0;
+      // Infinite grid repetition - position within cell
+      vec3 q = mod(p, spacing) - spacing * 0.5;
 
-    for(int i = 0; i < 80; i++) {
-      vec3 p = ro + rd * t;
+      // Get random values for this specific light
+      vec3 rand = hash3(cellId);
+      float randSize = rand.x;
+      float randColor = rand.y;
+      float randBright = rand.z;
 
-      // Apply infinite repetition
-      vec3 q = infiniteRepeat(p, spacing);
+      // Vary light size - some large, many small (like Kusama)
+      float lightSize = 0.02 + randSize * 0.06;
 
-      // Distance to nearest light sphere
-      float d = sphereSDF(q, lightRadius);
+      // Distance to light center
+      float d = length(q);
 
-      // Accumulate glow (softer than hard intersection)
-      float glow = lightRadius / (d + 0.1);
-      glow *= glow; // sharper falloff
+      // Star-like glow with sharp core
+      float core = smoothstep(lightSize, lightSize * 0.3, d);
+      float glow = lightSize * 0.8 / (d + 0.02);
+      glow = glow * glow * 0.08;
 
-      // Fade distant lights
-      float distanceFade = 1.0 / (1.0 + t * 0.02);
+      float light = core * 1.5 + glow;
 
-      // Only show lights up to our current reflection count
-      float gridIndex = floor(length(p) / spacing.x);
-      float showLight = step(gridIndex, maxReflections / 10.0);
+      // Brightness variation per light
+      light *= 0.5 + randBright * 0.8;
 
-      totalLight += glow * distanceFade * showLight * 0.015;
+      // Distance fade - further lights dimmer
+      float distanceFade = 1.0 / (1.0 + t * 0.025);
+      light *= distanceFade;
 
-      // March forward
-      t += max(d * 0.5, 0.1);
+      // Color palette - mix of warm and cool like Kusama
+      // Blue-dominant with occasional warm accents
+      vec3 lightColor;
+      if (randColor < 0.4) {
+        // Cool blue-white (most common)
+        lightColor = vec3(0.7, 0.85, 1.0);
+      } else if (randColor < 0.55) {
+        // Pure white
+        lightColor = vec3(1.0, 1.0, 1.0);
+      } else if (randColor < 0.7) {
+        // Cyan-green
+        lightColor = vec3(0.5, 1.0, 0.8);
+      } else if (randColor < 0.82) {
+        // Warm yellow
+        lightColor = vec3(1.0, 0.9, 0.5);
+      } else if (randColor < 0.92) {
+        // Orange
+        lightColor = vec3(1.0, 0.6, 0.3);
+      } else {
+        // Red/pink accent
+        lightColor = vec3(1.0, 0.4, 0.6);
+      }
 
-      // Stop if too far
-      if(t > 100.0) break;
+      col += lightColor * light;
+
+      // Adaptive step size - smaller steps near lights
+      t += max(d * 0.5, 0.15);
+
+      // Extended range for deep infinity effect
+      if(t > 120.0) break;
     }
 
-    // Apply light color
-    col += lightColor * totalLight * iBrightness;
+    // Apply brightness and intro fade
+    float introFade = iIntroProgress;
+    col *= iBrightness * introFade * 0.4;
 
-    // Add subtle ambient so it's not pure black
-    float ambient = 0.02 * iIntroProgress;
-    col += vec3(ambient * 0.5, ambient * 0.4, ambient * 0.6);
+    // Color shift affects blue channel
+    col.b += iColorShift * 0.05;
 
-    // Central light source (always visible, grows brighter)
-    vec3 centerDir = normalize(vec3(0.0, 0.0, -1.0)); // forward
-    float centerDot = max(dot(rd, centerDir), 0.0);
-    float centralGlow = pow(centerDot, 20.0) * (0.5 + iIntroProgress * 0.5);
-    col += lightColor * centralGlow * iBrightness;
+    // Tone mapping for smooth rolloff
+    col = col / (col + vec3(0.8));
 
-    // Vignette - darker at edges
-    float vignette = 1.0 - length(vUv - 0.5) * 0.5;
-    col *= vignette;
-
-    // Tone mapping
-    col = col / (col + vec3(1.0));
+    // Slight contrast boost
+    col = pow(col, vec3(0.9));
 
     gl_FragColor = vec4(col, 1.0);
   }
@@ -154,14 +174,11 @@ export function InfiniteLightShader({
     }
   });
 
-  // Tilt sphere slightly forward and align to head rotation
-  const tiltAngle = 15 * (Math.PI / 180);
-
   return (
     <mesh
       ref={meshRef}
       scale={[-1, 1, 1]}
-      rotation={[tiltAngle, -headRotationY, 0]}
+      rotation={[0, -headRotationY, 0]}
     >
       <sphereGeometry args={[50, 64, 64]} />
       <shaderMaterial
