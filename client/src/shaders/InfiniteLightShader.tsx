@@ -48,13 +48,14 @@ const fragmentShader = `
       float lightSize = 0.03 + h * 0.05;
       float d = length(q);
 
-      // Simplified glow calculation
-      float core = smoothstep(lightSize, 0.0, d);
-      float glow = lightSize / (d + 0.05);
-      float light = core * 2.0 + glow * glow * 0.1;
+      // Enhanced glow calculation - brighter cores and halos
+      float core = smoothstep(lightSize, 0.0, d) * 3.0;
+      float glow = lightSize / (d + 0.02);
+      float halo = glow * glow * 0.4;
+      float light = core + halo;
 
       // Brightness and distance fade combined
-      light *= (0.6 + h3 * 0.6) / (1.0 + t * 0.03);
+      light *= (0.7 + h3 * 0.5) / (1.0 + t * 0.025);
 
       // Optimized color palette - use mix instead of branches
       vec3 coolBlue = vec3(0.7, 0.85, 1.0);
@@ -70,8 +71,8 @@ const fragmentShader = `
       if(t > 60.0) break;
     }
 
-    // Apply brightness and intro
-    col *= iBrightness * iIntroProgress * 0.5;
+    // Apply brightness and intro - boosted for visual impact
+    col *= iBrightness * iIntroProgress * 0.8;
     col.b += iColorShift * 0.05;
 
     // Tone mapping
