@@ -8,6 +8,7 @@ import { SunsetCloudsShader } from "./shaders/SunsetCloudsShader";
 import { TunnelLightsShader } from "./shaders/TunnelLightsShader";
 import { InfiniteLightShader } from "./shaders/InfiniteLightShader";
 import { SacredVesselsShader } from "./shaders/SacredVesselsShader";
+import { PlatonicSolidsShader } from "./shaders/PlatonicSolidsShader";
 import { useAudioAnalyzer } from "./hooks/useAudioAnalyzer";
 import { SHADERS } from "./shaders";
 import "@fontsource/inter";
@@ -42,6 +43,8 @@ function ShaderRenderer({ shaderId, audioData, speed, pulse, brightness, colorSh
       return <SacredVesselsShader speed={speed} brightness={brightness} colorShift={colorShift} headRotationY={headRotationY} introProgress={introProgress} />;
     case 'sunset-clouds':
       return <SunsetCloudsShader speed={speed} />;
+    case 'platonic-solids':
+      return <PlatonicSolidsShader introProgress={introProgress} />;
     default:
       return <VRShaderScene audioData={audioData} paletteIndex={0} />;
   }
@@ -347,7 +350,7 @@ const globalAudio = {
 };
 
 // Shaders that use positional audio from a specific location
-const POSITIONAL_AUDIO_SHADERS = ['tunnel-lights', 'sacred-vessels', 'infinite-light'];
+const POSITIONAL_AUDIO_SHADERS = ['tunnel-lights', 'sacred-vessels', 'infinite-light', 'platonic-solids'];
 
 function getAudioBufferForShader(shaderId: string): AudioBuffer | null {
   return audioBuffers[shaderId] || audioBuffers['default'] || null;
@@ -538,6 +541,9 @@ function BackgroundMusic({ shouldPlay, shaderId, headRotationY = 0 }: Background
     } else if (shaderId === 'infinite-light') {
       // Close and centered for immersive surrounding effect
       audioPosition = [0, 0, -10];
+    } else if (shaderId === 'platonic-solids') {
+      // Centered, in front - where the solids appear
+      audioPosition = [0, 0, -6];
     } else {
       audioPosition = [0, 0, -100];
     }
@@ -634,7 +640,7 @@ function VRIntroAnimator({ started, onProgress, onComplete, shaderId }: VRIntroA
     const elapsed = Date.now() - startTimeRef.current;
 
     // Shader-specific intro durations
-    const duration = shaderId === 'infinite-light' ? 35000 : 8000; // 35s for infinite light, 8s for others
+    const duration = (shaderId === 'infinite-light' || shaderId === 'platonic-solids') ? 35000 : 8000; // 35s for infinite light & platonic, 8s for others
     const linearProgress = Math.min(1, elapsed / duration);
 
     // Apply easing curve based on shader
@@ -672,7 +678,7 @@ function App() {
   const { audioData, toggleListening } = useAudioAnalyzer();
 
   // Calculate effective brightness (intro affects it for abstract-waves and tunnel-lights)
-  const hasIntro = selectedShader === 'abstract-waves' || selectedShader === 'tunnel-lights' || selectedShader === 'infinite-light' || selectedShader === 'sacred-vessels';
+  const hasIntro = selectedShader === 'abstract-waves' || selectedShader === 'tunnel-lights' || selectedShader === 'infinite-light' || selectedShader === 'sacred-vessels' || selectedShader === 'platonic-solids';
   const isInIntro = vrIntroStarted && hasIntro && !introComplete;
   const introBrightness = 0.1 + 0.9 * introProgress; // 0.1 → 1.0
   const brightness = isInIntro ? introBrightness * baseBrightness : baseBrightness;
