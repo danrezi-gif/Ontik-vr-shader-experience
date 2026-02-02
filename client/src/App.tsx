@@ -327,7 +327,7 @@ const SHADER_AUDIO: { [key: string]: string } = {
   'abstract-waves': 'The Birth of the Holy.mp3',
   'tunnel-lights': 'Russian chant - Покаяния отверзи ми двери.mp3',
   'infinite-light': 'Ligeti-Lux-Aeterna.mp3',
-  'sacred-vessels': 'Ligeti-Lux-Aeterna.mp3',
+  'sacred-vessels': 'John Tavener - Funeral Canticle (The Tree of Life) FULL VERSION.mp3',
   'default': 'background-music.mp3'
 };
 
@@ -629,14 +629,14 @@ function VRIntroAnimator({ started, onProgress, onComplete, shaderId }: VRIntroA
     const elapsed = Date.now() - startTimeRef.current;
 
     // Shader-specific intro durations
-    const duration = shaderId === 'infinite-light' ? 18000 : 8000; // 18s for infinite light, 8s for others
+    const duration = shaderId === 'infinite-light' ? 35000 : 8000; // 35s for infinite light, 8s for others
     const linearProgress = Math.min(1, elapsed / duration);
 
     // Apply easing curve based on shader
     let progress: number;
     if (shaderId === 'infinite-light') {
-      // Ease-in-quad: slow start, speeds up (t^2)
-      progress = linearProgress * linearProgress;
+      // Ease-in-cubic: very slow start, accelerates dramatically (t^3)
+      progress = linearProgress * linearProgress * linearProgress;
     } else {
       progress = linearProgress;
     }

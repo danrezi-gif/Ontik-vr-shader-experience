@@ -31,19 +31,22 @@ const fragmentShader = `
 
     // === INTRO: Single light emerges, then multiplies to infinity ===
 
-    // Phase 1 (0-0.15): Single central light fades in
-    // Phase 2 (0.15-1.0): Lights multiply outward to infinity
-    float singleLightPhase = smoothstep(0.0, 0.15, iIntroProgress);
-    float multiplyPhase = smoothstep(0.15, 1.0, iIntroProgress);
+    // Phase 1 (0-0.25): Single central light fades in slowly
+    // Phase 2 (0.2-0.95): Lights multiply outward to infinity
+    // Phase 3 (0.7-1.0): Central glow fades out for high contrast
+    float singleLightFadeIn = smoothstep(0.0, 0.25, iIntroProgress);
+    float singleLightFadeOut = 1.0 - smoothstep(0.7, 1.0, iIntroProgress);
+    float singleLightPhase = singleLightFadeIn * singleLightFadeOut;
+    float multiplyPhase = smoothstep(0.2, 0.95, iIntroProgress);
 
-    // Central singular light - visible first
+    // Central singular light - visible first, fades after emergence
     float centralDist = length(rd.xz); // Distance from vertical axis
     float centralGlow = exp(-centralDist * centralDist * 3.0) * singleLightPhase;
     vec3 centralColor = vec3(1.0, 0.95, 0.9); // Warm white
     col += centralColor * centralGlow * 1.5;
 
     // Only show grid lights after initial phase
-    if (iIntroProgress > 0.1) {
+    if (iIntroProgress > 0.15) {
       float spacing = 2.2;
       float t = 0.2;
 
