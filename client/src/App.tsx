@@ -606,9 +606,10 @@ interface VRIntroAnimatorProps {
   started: boolean;
   onProgress: (progress: number) => void;
   onComplete: () => void;
+  shaderId?: string;
 }
 
-function VRIntroAnimator({ started, onProgress, onComplete }: VRIntroAnimatorProps) {
+function VRIntroAnimator({ started, onProgress, onComplete, shaderId }: VRIntroAnimatorProps) {
   const startTimeRef = useRef<number | null>(null);
   const completedRef = useRef(false);
 
@@ -626,12 +627,23 @@ function VRIntroAnimator({ started, onProgress, onComplete }: VRIntroAnimatorPro
     if (completedRef.current) return;
 
     const elapsed = Date.now() - startTimeRef.current;
-    const duration = 8000; // 8 seconds
-    const progress = Math.min(1, elapsed / duration);
+
+    // Shader-specific intro durations
+    const duration = shaderId === 'infinite-light' ? 18000 : 8000; // 18s for infinite light, 8s for others
+    const linearProgress = Math.min(1, elapsed / duration);
+
+    // Apply easing curve based on shader
+    let progress: number;
+    if (shaderId === 'infinite-light') {
+      // Ease-in-quad: slow start, speeds up (t^2)
+      progress = linearProgress * linearProgress;
+    } else {
+      progress = linearProgress;
+    }
 
     onProgress(progress);
 
-    if (progress >= 1 && !completedRef.current) {
+    if (linearProgress >= 1 && !completedRef.current) {
       completedRef.current = true;
       onComplete();
     }
@@ -796,6 +808,7 @@ function App() {
               started={vrIntroStarted && hasIntro}
               onProgress={handleIntroProgress}
               onComplete={handleIntroComplete}
+              shaderId={selectedShader || undefined}
             />
           </Suspense>
         </XR>
