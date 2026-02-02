@@ -24,93 +24,77 @@ const fragmentShader = `
   varying vec3 vPosition;
   varying vec3 vWorldPosition;
 
-  // Soft sphere SDF
-  float sphereSDF(vec3 p, float r) {
-    return length(p) - r;
-  }
-
-  // Infinite grid repetition
-  vec3 infiniteRepeat(vec3 p, vec3 spacing) {
-    return mod(p + spacing * 0.5, spacing) - spacing * 0.5;
-  }
-
   void main() {
-    // Ray from camera through this fragment
-    vec3 ro = vec3(0.0); // ray origin at center
-    vec3 rd = normalize(vWorldPosition); // ray direction toward sphere surface
+    // Ray direction from center toward sphere surface
+    vec3 rd = normalize(vWorldPosition);
 
-    // Background - deep void
+    // Background - pure void
     vec3 col = vec3(0.0);
 
-    // Calculate how many reflections based on intro progress
-    // Start with 1, grow to many
-    float maxReflections = 1.0 + iIntroProgress * 60.0;
+    // Grid spacing - dense like room of mirrors
+    vec3 spacing = vec3(4.0);
 
-    // Grid spacing - starts large (single light), shrinks (infinite lights)
-    float baseSpacing = 20.0;
-    float spacingMult = mix(100.0, 1.0, smoothstep(0.0, 0.8, iIntroProgress));
-    vec3 spacing = vec3(baseSpacing * spacingMult);
+    // Light properties - static, no breathing
+    float coreRadius = 0.08;
+    float glowRadius = 0.6;
 
-    // Light properties
-    float lightRadius = 0.3 + 0.1 * sin(iTime * 0.5); // gentle breathing
-    vec3 warmLight = vec3(1.0, 0.85, 0.6); // warm golden
-    vec3 coolLight = vec3(0.7, 0.85, 1.0); // cool accent
+    // Cool white color palette
+    vec3 coreColor = vec3(1.0, 1.0, 1.0); // Pure white core
+    vec3 glowColor = vec3(0.7, 0.85, 1.0); // Cool blue-white glow
 
-    // Color shift between warm and cool
-    vec3 lightColor = mix(warmLight, coolLight, 0.5 + 0.5 * sin(iColorShift));
-
-    // Raymarching
+    // Raymarching through infinite grid
     float t = 0.0;
     float totalLight = 0.0;
 
-    for(int i = 0; i < 80; i++) {
-      vec3 p = ro + rd * t;
+    for(int i = 0; i < 64; i++) {
+      vec3 p = rd * t;
 
-      // Apply infinite repetition
-      vec3 q = infiniteRepeat(p, spacing);
+      // Infinite grid repetition
+      vec3 q = mod(p + spacing * 0.5, spacing) - spacing * 0.5;
 
-      // Distance to nearest light sphere
-      float d = sphereSDF(q, lightRadius);
+      // Distance to light center
+      float d = length(q);
 
-      // Accumulate glow (softer than hard intersection)
-      float glow = lightRadius / (d + 0.1);
-      glow *= glow; // sharper falloff
+      // Two-layer glow: bright core + soft halo
+      // Core - small, bright
+      float core = smoothstep(coreRadius, 0.0, d) * 2.0;
 
-      // Fade distant lights
-      float distanceFade = 1.0 / (1.0 + t * 0.02);
+      // Halo - larger, softer
+      float halo = glowRadius / (d + 0.1);
+      halo = halo * halo * 0.15;
 
-      // Only show lights up to our current reflection count
-      float gridIndex = floor(length(p) / spacing.x);
-      float showLight = step(gridIndex, maxReflections / 10.0);
+      // Combine
+      float light = core + halo;
 
-      totalLight += glow * distanceFade * showLight * 0.015;
+      // Distance fade - lights further away are dimmer
+      float distanceFade = 1.0 / (1.0 + t * 0.03);
+
+      totalLight += light * distanceFade;
 
       // March forward
-      t += max(d * 0.5, 0.1);
+      t += max(d * 0.4, 0.2);
 
-      // Stop if too far
-      if(t > 100.0) break;
+      // Stop when far enough
+      if(t > 80.0) break;
     }
 
-    // Apply light color
-    col += lightColor * totalLight * iBrightness;
+    // Apply colors - core is white, glow is cool blue
+    col += coreColor * totalLight * 0.3;
+    col += glowColor * totalLight * 0.15;
 
-    // Add subtle ambient so it's not pure black
-    float ambient = 0.02 * iIntroProgress;
-    col += vec3(ambient * 0.5, ambient * 0.4, ambient * 0.6);
+    // Apply brightness and intro fade
+    // Intro: darkness fades, grid revealed
+    float introFade = iIntroProgress;
+    col *= iBrightness * introFade;
 
-    // Central light source (always visible, grows brighter)
-    vec3 centerDir = normalize(vec3(0.0, 0.0, -1.0)); // forward
-    float centerDot = max(dot(rd, centerDir), 0.0);
-    float centralGlow = pow(centerDot, 20.0) * (0.5 + iIntroProgress * 0.5);
-    col += lightColor * centralGlow * iBrightness;
+    // Subtle color shift support
+    col.b += iColorShift * 0.05;
 
-    // Vignette - darker at edges
-    float vignette = 1.0 - length(vUv - 0.5) * 0.5;
-    col *= vignette;
-
-    // Tone mapping
+    // Tone mapping for smooth rolloff
     col = col / (col + vec3(1.0));
+
+    // Slight contrast boost
+    col = pow(col, vec3(0.95));
 
     gl_FragColor = vec4(col, 1.0);
   }
@@ -154,14 +138,11 @@ export function InfiniteLightShader({
     }
   });
 
-  // Tilt sphere slightly forward and align to head rotation
-  const tiltAngle = 15 * (Math.PI / 180);
-
   return (
     <mesh
       ref={meshRef}
       scale={[-1, 1, 1]}
-      rotation={[tiltAngle, -headRotationY, 0]}
+      rotation={[0, -headRotationY, 0]}
     >
       <sphereGeometry args={[50, 64, 64]} />
       <shaderMaterial
