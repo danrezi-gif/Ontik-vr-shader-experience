@@ -42,5 +42,11 @@ export const SHADERS: ShaderInfo[] = [
     name: 'Sunset Clouds',
     description: 'Turbulent atmospheric clouds at golden hour',
     color: '#ff7b54'
+  },
+  {
+    id: 'platonic-solids',
+    name: 'Sacred Geometry',
+    description: 'The five platonic solids emerge from the void - mathematical perfection',
+    color: '#aa66ff'
   }
 ];
