@@ -745,6 +745,17 @@ function App() {
     if (session) {
       session.end();
     }
+
+    // Stop all audio when leaving VR
+    if (globalAudio.audio?.isPlaying) {
+      globalAudio.audio.stop();
+    }
+    if (globalAudio.positionalAudio?.isPlaying) {
+      globalAudio.positionalAudio.stop();
+    }
+    globalAudio.currentTrack = null;
+    setMusicStarted(false);
+
     setSelectedShader(null);
     setVrIntroStarted(false);
     setIntroProgress(0);
