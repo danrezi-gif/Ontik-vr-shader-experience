@@ -38,6 +38,12 @@ export const SHADERS: ShaderInfo[] = [
     color: '#ffcc66'
   },
   {
+    id: 'sacred-vessels',
+    name: 'The Vessels',
+    description: 'Luminous streams of sacred water - a Bill Viola meditation',
+    color: '#6699ff'
+  },
+  {
     id: 'sunset-clouds',
     name: 'Sunset Clouds',
     description: 'Turbulent atmospheric clouds at golden hour',
