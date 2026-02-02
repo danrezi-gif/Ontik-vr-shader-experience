@@ -60,8 +60,13 @@ const fragmentShader = `
 
     vec3 col = vec3(0.0);
 
-    // Slow time for meditative feel
+    // Time for animation
     float t = iTime * 0.15;
+
+    // === ASCENDING MOVEMENT ===
+    // User rises upward through the light - creates vertical drift
+    float ascentSpeed = iTime * 0.08; // Slow, meditative rise
+    float ascentY = uv.y - ascentSpeed; // Shift view upward over time
 
     // Create multiple vertical light columns (vessels)
     float numColumns = 5.0;
@@ -82,10 +87,7 @@ const fragmentShader = `
       // Soft column falloff
       float columnMask = smoothstep(columnWidth, 0.0, dx);
 
-      // Streaming particles flowing down
-      float flow = uv.y * 3.0 + t * (0.8 + i * 0.1);
-
-      // Particle streams using noise
+      // Particle streams using noise - now with ascent
       float particles = 0.0;
 
       // Multiple particle layers for depth
@@ -93,9 +95,10 @@ const fragmentShader = `
         float scale = 8.0 + j * 4.0;
         float speed = t * (1.0 + j * 0.3);
 
+        // Ascending UV - particles stream past as we rise
         vec2 particleUV = vec2(
           uv.x * scale + i * 3.7,
-          uv.y * scale * 2.0 + speed
+          ascentY * scale * 2.0 + speed
         );
 
         float n = noise(particleUV);
@@ -103,21 +106,21 @@ const fragmentShader = `
         // Create distinct particles
         float particle = smoothstep(0.6, 0.8, n);
 
-        // Vertical streaking
-        float streak = noise(vec2(uv.x * 50.0 + i * 7.0, uv.y * 2.0 + speed * 2.0));
-        streak = smoothstep(0.4, 0.9, streak);
+        // Vertical streaking - enhanced for ascent feel
+        float streak = noise(vec2(uv.x * 50.0 + i * 7.0, ascentY * 3.0 + speed * 2.0));
+        streak = smoothstep(0.3, 0.85, streak);
 
-        particles += (particle * 0.7 + streak * 0.3) / (1.0 + j * 0.5);
+        particles += (particle * 0.6 + streak * 0.4) / (1.0 + j * 0.5);
       }
 
       // Central glow within column - brighter core
-      float centerGlow = exp(-dx * dx * 800.0) * 2.0;
+      float centerGlow = exp(-dx * dx * 800.0) * 2.5;
 
       // Combine particles with column
       float intensity = columnMask * particles + centerGlow;
 
-      // Vertical fade - brighter at top, streams down
-      float verticalGrad = smoothstep(-0.8, 0.5, uv.y);
+      // Vertical gradient shifts with ascent - always bright above
+      float verticalGrad = smoothstep(-1.0, 0.3, uv.y);
       intensity *= verticalGrad;
 
       // Ethereal blue-white color
@@ -129,43 +132,49 @@ const fragmentShader = `
 
       vec3 finalColor = mix(streamColor, coreColor, coreMix);
 
-      col += finalColor * intensity * 0.4;
+      col += finalColor * intensity * 0.5;
     }
 
-    // Add central luminous presence (abstract figure suggestion)
-    float centerDist = length(vec2(uv.x, uv.y * 0.5));
+    // Luminous presence above - we ascend toward it
+    // Position shifts down as we rise (we approach from below)
+    float figureY = 0.4 - ascentSpeed * 0.3; // Figure descends relative to us
+    float figureY_clamped = mod(figureY + 1.0, 2.0) - 1.0; // Wrap around
+
+    float centerDist = length(vec2(uv.x, (uv.y - figureY_clamped) * 0.5));
 
     // Ethereal body glow
-    float presence = exp(-centerDist * centerDist * 8.0) * 0.6;
+    float presence = exp(-centerDist * centerDist * 6.0) * 0.7;
 
-    // Head region - brighter
-    float headY = uv.y - 0.3;
+    // Head region - brighter, above
+    float headY = uv.y - figureY_clamped - 0.25;
     float headDist = length(vec2(uv.x * 1.5, headY));
-    float head = exp(-headDist * headDist * 50.0) * 0.8;
+    float head = exp(-headDist * headDist * 40.0) * 0.9;
 
-    // Arms/reaching gesture
+    // Arms/reaching gesture - welcoming from above
     float armSpread = abs(uv.x) * 2.0;
-    float armY = uv.y + 0.1 - armSpread * 0.3;
-    float arms = exp(-armY * armY * 20.0) * smoothstep(0.4, 0.1, abs(uv.y + 0.1));
+    float armY = uv.y - figureY_clamped + 0.1 - armSpread * 0.3;
+    float arms = exp(-armY * armY * 15.0) * smoothstep(0.5, 0.1, abs(uv.y - figureY_clamped + 0.1));
     arms *= smoothstep(0.0, 0.3, abs(uv.x)) * smoothstep(0.5, 0.2, abs(uv.x));
 
     // Combine presence
-    float figureGlow = presence + head + arms * 0.4;
+    float figureGlow = presence + head + arms * 0.5;
 
-    // Figure color - ethereal white-blue
-    vec3 figureColor = vec3(0.9, 0.95, 1.0);
+    // Figure color - ethereal white-blue, brighter
+    vec3 figureColor = vec3(0.95, 0.98, 1.0);
     col += figureColor * figureGlow;
 
-    // Cascading water/light from figure
-    float cascade = 0.0;
-    for(float k = 0.0; k < 4.0; k++) {
-      float cascadeX = uv.x + sin(uv.y * 10.0 + t + k) * 0.02;
-      float cascadeStream = exp(-cascadeX * cascadeX * 100.0);
-      float cascadeFlow = noise(vec2(cascadeX * 30.0, uv.y * 20.0 - t * 3.0 - k));
-      cascadeStream *= smoothstep(0.3, -0.5, uv.y); // Only below figure
-      cascade += cascadeStream * cascadeFlow * 0.3;
+    // Light rays descending from above
+    float rays = 0.0;
+    for(float k = 0.0; k < 5.0; k++) {
+      float rayAngle = (k / 5.0) * 6.28318 + ascentSpeed * 0.2;
+      float rayX = sin(rayAngle) * 0.15;
+      float rayDist = abs(uv.x - rayX);
+      float ray = exp(-rayDist * rayDist * 200.0);
+      ray *= smoothstep(-0.5, 0.8, uv.y); // Rays from above
+      ray *= (0.5 + 0.5 * sin(ascentY * 20.0 + k * 2.0)); // Shimmer
+      rays += ray * 0.15;
     }
-    col += vec3(0.7, 0.85, 1.0) * cascade;
+    col += vec3(0.8, 0.9, 1.0) * rays;
 
     // Breathing/pulsing - very subtle
     float breath = sin(iTime * 0.3) * 0.5 + 0.5;
