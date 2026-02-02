@@ -13,6 +13,7 @@ const vertexShader = `
   }
 `;
 
+// Rewritten to match the reference shader's accumulation-based raymarching style
 const fragmentShader = `
   precision highp float;
 
@@ -26,194 +27,145 @@ const fragmentShader = `
   #define PHI 1.618033988749895
 
   // === PLATONIC SOLID SDFs ===
+  // Returns distance normalized by size factor for consistent glow
 
-  // Tetrahedron
-  float sdTetrahedron(vec3 p, float size) {
+  // Tetrahedron (4 faces)
+  float sdTetrahedron(vec3 p) {
     float k = sqrt(2.0);
-    p /= size;
     p.xz = abs(p.xz);
     float m = 2.0 * p.z - k * p.y - 1.0;
     p = (m > 0.0) ? p : vec3(p.z, p.y, p.x);
-    float m2 = 2.0 * p.z - k * p.y - 1.0;
-    p = (m2 > 0.0) ? p : vec3(p.z, p.y, p.x);
+    m = 2.0 * p.z - k * p.y - 1.0;
+    p = (m > 0.0) ? p : vec3(p.z, p.y, p.x);
     p.xz -= clamp(p.xz, 0.0, 1.0);
-    float d = length(p) * sign(p.y);
-    return d * size;
+    return length(p) * sign(p.y);
   }
 
-  // Cube (Hexahedron)
-  float sdCube(vec3 p, float size) {
-    vec3 d = abs(p) - vec3(size);
+  // Octahedron (8 faces) - from reference shader style
+  float sdOctahedron(vec3 p) {
+    return (abs(p.x) + abs(p.y) + abs(p.z) - 3.5) / 1.732;
+  }
+
+  // Cube/Hexahedron (6 faces)
+  float sdCube(vec3 p) {
+    vec3 d = abs(p) - vec3(2.5);
     return length(max(d, 0.0)) + min(max(d.x, max(d.y, d.z)), 0.0);
   }
 
-  // Octahedron
-  float sdOctahedron(vec3 p, float size) {
-    p = abs(p);
-    float m = p.x + p.y + p.z - size;
-    vec3 q;
-    if (3.0 * p.x < m) q = p.xyz;
-    else if (3.0 * p.y < m) q = p.yzx;
-    else if (3.0 * p.z < m) q = p.zxy;
-    else return m * 0.57735027;
-    float k = clamp(0.5 * (q.z - q.y + size), 0.0, size);
-    return length(vec3(q.x, q.y - size + k, q.z - k));
-  }
-
-  // Dodecahedron
-  float sdDodecahedron(vec3 p, float size) {
+  // Dodecahedron (12 faces)
+  float sdDodecahedron(vec3 p) {
     vec3 n1 = normalize(vec3(PHI, 1.0, 0.0));
     vec3 n2 = normalize(vec3(1.0, PHI, 0.0));
     vec3 n3 = normalize(vec3(0.0, 1.0, PHI));
     p = abs(p);
-    float a = dot(p, n1);
-    float b = dot(p, n2);
-    float c = dot(p, n3);
-    return (max(max(a, b), c) - size * 0.8) * 0.8;
+    return max(max(dot(p, n1), dot(p, n2)), dot(p, n3)) - 2.8;
   }
 
-  // Icosahedron
-  float sdIcosahedron(vec3 p, float size) {
-    float g = PHI;
-    vec3 n1 = normalize(vec3(g, 1.0, 0.0));
-    vec3 n2 = normalize(vec3(1.0, 0.0, g));
-    vec3 n3 = normalize(vec3(0.0, g, 1.0));
+  // Icosahedron (20 faces)
+  float sdIcosahedron(vec3 p) {
+    vec3 n1 = normalize(vec3(PHI, 1.0, 0.0));
+    vec3 n2 = normalize(vec3(1.0, 0.0, PHI));
+    vec3 n3 = normalize(vec3(0.0, PHI, 1.0));
     p = abs(p);
-    float d = max(max(dot(p, n1), dot(p, n2)), dot(p, n3));
-    return d - size * 0.7;
-  }
-
-  // Rotation matrix
-  mat2 rot(float a) {
-    float c = cos(a), s = sin(a);
-    return mat2(c, -s, s, c);
+    return max(max(dot(p, n1), dot(p, n2)), dot(p, n3)) - 2.5;
   }
 
   void main() {
-    // Setup ray direction from sphere surface
-    vec3 ro = vec3(0.0);
-    vec3 rd = normalize(vPosition);
+    // Setup ray from sphere position (like reference: f = (f - .5*res)/res.y/.1)
+    vec2 f = vPosition.xy * 10.0;
 
-    // Initialize color
-    vec3 col = vec3(0.0);
+    // Camera depth (z) and raymarch distance (d)
+    float z = 5.0;
+    float d;
+
+    // 3D sample point
+    vec3 p;
+
+    // Output color accumulator (vec4 for the sin trick)
+    vec4 o = vec4(0.0);
 
     // === INTRO PHASES ===
-    // Phase 1 (0.0 - 0.15): Complete darkness, single point of light emerges
-    // Phase 2 (0.15 - 1.0): Solids appear in sequence
-
     float introProgress = iIntroProgress;
 
-    // Early phase - just a point of light
+    // Early phase - just a point of light emerging
     if (introProgress < 0.15) {
       float pointPhase = smoothstep(0.0, 0.15, introProgress);
-      float pointDist = length(rd.xy);
-      float point = exp(-pointDist * 20.0) * pointPhase * 2.0;
-      col = vec3(0.9, 0.92, 1.0) * point;
-      gl_FragColor = vec4(col, 1.0);
+      float pointDist = length(vPosition.xy);
+      float point = exp(-pointDist * 0.5) * pointPhase * 2.0;
+      gl_FragColor = vec4(vec3(0.9, 0.92, 1.0) * point, 1.0);
       return;
     }
 
-    // Calculate which solid to show (0-4 cycle after intro)
+    // Calculate which solid to show (0-4)
     float sequenceTime = introProgress < 1.0
-      ? (introProgress - 0.15) / 0.17  // During intro: show each solid for ~17% of remaining time
-      : iTime * 0.15;  // After intro: slow cycle
+      ? (introProgress - 0.15) / 0.17
+      : iTime * 0.12;
 
     int solidIndex = int(mod(sequenceTime, 5.0));
-    float solidBlend = fract(sequenceTime); // For transitions
+    float solidBlend = fract(sequenceTime);
 
-    // Smooth transition factor
-    float fadeIn = smoothstep(0.0, 0.15, solidBlend);
-    float fadeOut = smoothstep(0.85, 1.0, solidBlend);
-    float solidAlpha = fadeIn * (1.0 - fadeOut);
+    // Fade factor for transitions
+    float fadeIn = smoothstep(0.0, 0.2, solidBlend);
+    float fadeOut = 1.0 - smoothstep(0.8, 1.0, solidBlend);
+    float solidAlpha = introProgress < 1.0 ? fadeIn : fadeIn * fadeOut;
 
-    // During intro, don't fade out the last shown solid
-    if (introProgress < 1.0) {
-      solidAlpha = smoothstep(0.0, 0.3, solidBlend);
-    }
+    // Color offset per solid (creates different hues)
+    float colorOffset = float(solidIndex) * 1.2;
 
-    // Raymarching
-    float t = 0.0;
-    float minDist = 1000.0;
-    vec3 hitPos = vec3(0.0);
+    // Rotation speed
+    float rotTime = iTime * 0.5;
 
-    // Slow rotation
-    float rotSpeed = introProgress < 1.0 ? iTime * 0.3 : iTime * 0.2;
+    // === RAYMARCH LOOP (reference style: accumulate color) ===
+    for (int i = 0; i < 100; i++) {
+      // Sample point at current depth
+      p = vec3(f, z);
 
-    for (int i = 0; i < 80; i++) {
-      vec3 p = ro + rd * t;
+      // Rotation about Y-axis (reference style: mat2 with cos vec4 trick)
+      float c = cos(rotTime);
+      float s = sin(rotTime);
+      p.xz = mat2(c, -s, s, c) * p.xz;
 
-      // Move ray origin forward (camera at distance)
-      p.z += 6.0;
+      // Secondary rotation for more interest
+      c = cos(rotTime * 0.7);
+      s = sin(rotTime * 0.7);
+      p.xy = mat2(c, -s, s, c) * p.xy;
 
-      // Apply rotation
-      p.xz *= rot(rotSpeed);
-      p.xy *= rot(rotSpeed * 0.7);
-
-      // Calculate distance to current solid
-      float d;
-      float size = 1.8;
-
+      // Get distance to current solid
       if (solidIndex == 0) {
-        d = sdTetrahedron(p, size * 1.2);
+        d = 0.1 + 0.2 * abs(sdTetrahedron(p / 2.5) * 2.5);
       } else if (solidIndex == 1) {
-        d = sdCube(p, size * 0.9);
+        d = 0.1 + 0.2 * abs(sdCube(p));
       } else if (solidIndex == 2) {
-        d = sdOctahedron(p, size);
+        // Octahedron - closest to reference shader
+        d = 0.1 + 0.2 * abs(sdOctahedron(p));
       } else if (solidIndex == 3) {
-        d = sdDodecahedron(p, size);
+        d = 0.1 + 0.2 * abs(sdDodecahedron(p));
       } else {
-        d = sdIcosahedron(p, size);
+        d = 0.1 + 0.2 * abs(sdIcosahedron(p));
       }
 
-      minDist = min(minDist, d);
-      hitPos = p;
+      // Accumulate color (reference style: sin wave + attenuation by distance)
+      // The vec4(0,1,2,3) creates RGB phase offset for rainbow effect
+      o += (sin(p.y + z + colorOffset + vec4(0.0, 1.0, 2.0, 3.0)) + 1.0) / d;
 
-      if (d < 0.001) break;
-      if (t > 20.0) break;
+      // Advance depth
+      z -= d;
 
-      t += d * 0.8;
+      // Early exit if too far
+      if (z < -10.0) break;
     }
 
-    // === COLORING ===
-    // Base color varies by solid type
-    vec3 solidColors[5];
-    solidColors[0] = vec3(1.0, 0.4, 0.3);   // Tetrahedron - warm red/orange
-    solidColors[1] = vec3(0.3, 0.8, 1.0);   // Cube - cyan
-    solidColors[2] = vec3(1.0, 0.9, 0.3);   // Octahedron - gold
-    solidColors[3] = vec3(0.6, 0.3, 1.0);   // Dodecahedron - purple
-    solidColors[4] = vec3(0.3, 1.0, 0.5);   // Icosahedron - green
+    // Tanh tonemapping (reference style: tanh(o*o/1e5))
+    o = tanh(o * o / 1e5);
 
-    vec3 baseColor = solidColors[solidIndex];
+    // Apply transition alpha
+    o *= solidAlpha;
 
-    // Glow based on proximity to surface
-    float glow = exp(-minDist * 3.0);
+    // Intro brightness fade
+    float introBrightness = smoothstep(0.15, 0.5, introProgress);
+    o *= introBrightness;
 
-    // Edge highlighting using gradient of distance
-    float edge = exp(-minDist * 8.0);
-
-    // Rainbow shimmer based on position (like reference)
-    vec3 rainbow = 0.5 + 0.5 * cos(hitPos.y * 2.0 + iTime + vec3(0.0, 2.1, 4.2));
-
-    // Combine colors
-    col = baseColor * glow * 1.5;
-    col += vec3(1.0) * edge * 0.8;  // White edges
-    col += rainbow * glow * 0.3;     // Subtle rainbow
-
-    // Apply solid alpha for transitions
-    col *= solidAlpha;
-
-    // Overall intro brightness
-    float introBrightness = smoothstep(0.15, 0.4, introProgress);
-    col *= introBrightness;
-
-    // Add subtle ambient glow in the void
-    float ambientGlow = exp(-length(rd.xy) * 2.0) * 0.05;
-    col += baseColor * ambientGlow * solidAlpha;
-
-    // Tanh tonemapping (from reference)
-    col = tanh(col);
-
-    gl_FragColor = vec4(col, 1.0);
+    gl_FragColor = vec4(o.rgb, 1.0);
   }
 `;
 
