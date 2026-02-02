@@ -356,7 +356,7 @@ const globalAudio = {
 };
 
 // Shaders that use positional audio from a specific location
-const POSITIONAL_AUDIO_SHADERS = ['tunnel-lights'];
+const POSITIONAL_AUDIO_SHADERS = ['tunnel-lights', 'sacred-vessels', 'infinite-light'];
 
 function getAudioBufferForShader(shaderId: string): AudioBuffer | null {
   return audioBuffers[shaderId] || audioBuffers['default'] || null;
@@ -395,10 +395,10 @@ function initAudioListener(camera: THREE.Camera) {
   // Create positional audio for spatial shaders
   const positionalAudio = new THREE.PositionalAudio(listener);
   positionalAudio.setLoop(true);
-  positionalAudio.setVolume(1.0); // Increased from 0.6
-  positionalAudio.setRefDistance(100); // Increased from 20 - full volume up to 100 units
+  positionalAudio.setVolume(1.5); // Louder for immersive effect
+  positionalAudio.setRefDistance(200); // Full volume up to 200 units
   positionalAudio.setMaxDistance(2000); // Max distance for attenuation
-  positionalAudio.setRolloffFactor(0.1); // Reduced from 0.3 - gentler falloff
+  positionalAudio.setRolloffFactor(0.05); // Very gentle falloff - stays loud
   positionalAudio.setDistanceModel('exponential');
   globalAudio.positionalAudio = positionalAudio;
 
@@ -532,13 +532,27 @@ function BackgroundMusic({ shouldPlay, shaderId, headRotationY = 0 }: Background
   const isPositional = POSITIONAL_AUDIO_SHADERS.includes(shaderId);
 
   if (isPositional) {
-    // Position at far end of tunnel (1000 units forward, adjusted for head rotation)
-    const distance = 800;
-    const x = Math.sin(-headRotationY) * distance;
-    const z = -Math.cos(-headRotationY) * distance;
+    // Shader-specific audio positioning
+    let audioPosition: [number, number, number];
+
+    if (shaderId === 'tunnel-lights') {
+      // Far end of tunnel
+      const distance = 800;
+      const x = Math.sin(-headRotationY) * distance;
+      const z = -Math.cos(-headRotationY) * distance;
+      audioPosition = [x, 0, z];
+    } else if (shaderId === 'sacred-vessels') {
+      // From above - divine light descending
+      audioPosition = [0, 50, 0];
+    } else if (shaderId === 'infinite-light') {
+      // Close and centered for immersive surrounding effect
+      audioPosition = [0, 0, -10];
+    } else {
+      audioPosition = [0, 0, -100];
+    }
 
     return (
-      <mesh ref={audioMeshRef} position={[x, 0, z]} visible={false}>
+      <mesh ref={audioMeshRef} position={audioPosition} visible={false}>
         <sphereGeometry args={[1, 8, 8]} />
         <meshBasicMaterial />
       </mesh>
