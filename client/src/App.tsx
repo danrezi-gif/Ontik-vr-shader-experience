@@ -3,11 +3,8 @@ import { Suspense, useState, useCallback, useRef, useEffect, useMemo } from "rea
 import { XR, createXRStore, XROrigin } from "@react-three/xr";
 import { VRShaderScene } from "./components/VRShaderScene";
 import { ShaderGallery } from "./components/ShaderGallery";
-import { MorphingBlobsShader } from "./shaders/MorphingBlobsShader";
 import { AbstractWavesShader } from "./shaders/AbstractWavesShader";
 import { SunsetCloudsShader } from "./shaders/SunsetCloudsShader";
-import { SpiralTunnelShader } from "./shaders/SpiralTunnelShader";
-import { BokehLightsShader } from "./shaders/BokehLightsShader";
 import { TunnelLightsShader } from "./shaders/TunnelLightsShader";
 import { InfiniteLightShader } from "./shaders/InfiniteLightShader";
 import { SacredVesselsShader } from "./shaders/SacredVesselsShader";
@@ -35,8 +32,6 @@ function ShaderRenderer({ shaderId, audioData, speed, pulse, brightness, colorSh
   switch (shaderId) {
     case 'audio-reactive':
       return <VRShaderScene audioData={audioData} paletteIndex={0} />;
-    case 'morphing-blobs':
-      return <MorphingBlobsShader />;
     case 'abstract-waves':
       return <AbstractWavesShader speed={speed} brightness={brightness} colorShift={colorShift} zoom={zoom} pulse={pulse} headRotationY={headRotationY} introProgress={introProgress} />;
     case 'tunnel-lights':
@@ -47,10 +42,6 @@ function ShaderRenderer({ shaderId, audioData, speed, pulse, brightness, colorSh
       return <SacredVesselsShader speed={speed} brightness={brightness} colorShift={colorShift} headRotationY={headRotationY} introProgress={introProgress} />;
     case 'sunset-clouds':
       return <SunsetCloudsShader speed={speed} />;
-    case 'spiral-tunnel':
-      return <SpiralTunnelShader />;
-    case 'bokeh-lights':
-      return <BokehLightsShader />;
     default:
       return <VRShaderScene audioData={audioData} paletteIndex={0} />;
   }
