@@ -411,49 +411,74 @@ const fragmentShader = `
       col = mix(col, col * 1.2, deepFadeIn * 0.3);
     }
 
-    // Phase 4: Final white-out immersion with GOLDEN + COLORED crescendo (260s+)
+    // Phase 4: Final immersion - MULTICOLORED CATHEDRAL CRESCENDO (260s+)
+    // NOT white-out, but peak colored fog with golden depths
     if (iAudioTime > phase4Start) {
-      float whiteOutProgress = smoothstep(0.0, 45.0, iAudioTime - phase4Start);
-      float earlyPhase = 1.0 - smoothstep(0.0, 0.5, whiteOutProgress); // First half
+      float finalProgress = smoothstep(0.0, 50.0, iAudioTime - phase4Start);
 
-      // === GOLDEN CRESCENDO before white-out ===
-      // Intense golden fog envelope
-      vec3 goldenCrescendo = vec3(1.0, 0.9, 0.5) * earlyPhase * 0.6;
-
-      // Swirling cathedral colors at peak intensity
-      vec3 finalColors = vec3(0.0);
+      // === INTENSIFIED CATHEDRAL COLORS - PEAK SATURATION ===
+      vec3 cathedralPeak = vec3(0.0);
       for(float f = 0.0; f < 12.0; f++) {
-        float burstAngle = f * 0.524 + iTime * 0.08;
+        float burstAngle = f * 0.524 + iTime * 0.06;
         float burstTheta = theta - burstAngle;
         float burstDist = abs(sin(burstTheta * 0.5));
-        float burst = exp(-burstDist * burstDist * 15.0) * earlyPhase;
+        float burst = exp(-burstDist * burstDist * 12.0);
 
-        // Intense cathedral colors
+        // Vertical spread - colors fill entire space
+        float verticalFill = smoothstep(-0.8, 0.9, uv.y);
+        burst *= verticalFill;
+
+        // Peak intensity cathedral colors
         vec3 burstColor;
         float colorIdx = mod(f, 6.0);
-        if (colorIdx < 1.0) burstColor = vec3(1.0, 0.2, 0.3);
-        else if (colorIdx < 2.0) burstColor = vec3(0.2, 0.4, 1.0);
-        else if (colorIdx < 3.0) burstColor = vec3(1.0, 0.9, 0.2);
-        else if (colorIdx < 4.0) burstColor = vec3(0.2, 1.0, 0.5);
-        else if (colorIdx < 5.0) burstColor = vec3(0.9, 0.3, 1.0);
-        else burstColor = vec3(1.0, 0.6, 0.2);
+        if (colorIdx < 1.0) burstColor = vec3(1.0, 0.2, 0.35); // Ruby
+        else if (colorIdx < 2.0) burstColor = vec3(0.2, 0.45, 1.0); // Sapphire
+        else if (colorIdx < 3.0) burstColor = vec3(1.0, 0.9, 0.25); // Gold
+        else if (colorIdx < 4.0) burstColor = vec3(0.2, 1.0, 0.5); // Emerald
+        else if (colorIdx < 5.0) burstColor = vec3(0.9, 0.3, 1.0); // Amethyst
+        else burstColor = vec3(1.0, 0.6, 0.25); // Amber
 
-        finalColors += burstColor * burst * 0.25;
+        cathedralPeak += burstColor * burst * 0.35;
       }
 
-      // Golden + colored fog from below rises to meet from above
-      float risingGolden = smoothstep(-0.8, 0.5, uv.y) * earlyPhase;
-      col += vec3(1.0, 0.85, 0.4) * risingGolden * 0.4;
+      // === COLORED FOG FILLING THE SPACE ===
+      vec3 coloredFogFinal = vec3(0.0);
+      for(float cf = 0.0; cf < 8.0; cf++) {
+        float fogAngle = cf * 0.785 + iTime * 0.025;
+        float fogTheta = theta - fogAngle;
+        float fogWave = sin(fogTheta * 1.5 + uv.y * 2.0 + iTime * 0.2) * 0.5 + 0.5;
+        fogWave = pow(fogWave, 0.7); // Softer, more fog-like
 
-      col += goldenCrescendo + finalColors;
+        vec3 fogColor;
+        float colorIdx = mod(cf, 6.0);
+        if (colorIdx < 1.0) fogColor = vec3(0.9, 0.35, 0.45);
+        else if (colorIdx < 2.0) fogColor = vec3(0.35, 0.5, 0.9);
+        else if (colorIdx < 3.0) fogColor = vec3(0.9, 0.8, 0.35);
+        else if (colorIdx < 4.0) fogColor = vec3(0.35, 0.85, 0.5);
+        else if (colorIdx < 5.0) fogColor = vec3(0.8, 0.4, 0.85);
+        else fogColor = vec3(0.9, 0.6, 0.35);
 
-      // Peak saturation before white
-      float satPeak = sin(whiteOutProgress * 3.14159) * 0.5; // Peaks in middle
-      col = mix(col, col * 1.5, satPeak);
+        coloredFogFinal += fogColor * fogWave * 0.18;
+      }
 
-      // Final divine white immersion - warm tinted
-      vec3 divineWhite = vec3(1.0, 0.99, 0.95);
-      col = mix(col, divineWhite, whiteOutProgress * whiteOutProgress);
+      // === GOLDEN GLOW PERMEATING EVERYTHING ===
+      vec3 goldenPermeation = vec3(1.0, 0.88, 0.5) * 0.35;
+
+      // Combine: cathedral rays + colored fog + golden warmth
+      vec3 finalAtmosphere = cathedralPeak + coloredFogFinal * finalProgress + goldenPermeation * finalProgress;
+
+      // Intensity builds to overwhelming
+      float intensityBuild = 1.0 + finalProgress * 0.8;
+      finalAtmosphere *= intensityBuild;
+
+      // Soft luminous haze that doesn't obscure colors - warm white tint, not pure white
+      vec3 luminousHaze = vec3(1.0, 0.95, 0.88) * finalProgress * 0.25;
+
+      col += finalAtmosphere + luminousHaze;
+
+      // Boost saturation at the peak
+      float satBoost = 1.0 + finalProgress * 0.4;
+      col = mix(vec3(dot(col, vec3(0.299, 0.587, 0.114))), col, satBoost);
     }
 
     // Progressive saturation and glow intensification throughout phases
