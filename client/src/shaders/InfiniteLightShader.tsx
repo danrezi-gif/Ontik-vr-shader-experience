@@ -98,12 +98,14 @@ const fragmentShader = `
     float inTransition = smoothstep(transitionStart, PHASE_DURATION, phaseTime);
     float postTransition = smoothstep(0.0, 3.0, phaseTime); // Fade in after transition
 
-    // Grid visibility: full during phase, fade during transition, fade in at start
+    // Grid visibility: full during phase, fade during transition, fade in at start of new phase
     float gridVisibility = 1.0;
     if (phaseTime > transitionStart) {
+      // Fade out current grid near end of phase
       gridVisibility = 1.0 - smoothstep(transitionStart, PHASE_DURATION - 1.0, phaseTime);
     }
-    if (phaseTime < 3.0 && journeyTime > 1.0) {
+    if (phaseTime < 3.0 && currentPhase > 0) {
+      // Fade in new grid after transition (only for phases 1+, not phase 0)
       gridVisibility *= postTransition;
     }
 
