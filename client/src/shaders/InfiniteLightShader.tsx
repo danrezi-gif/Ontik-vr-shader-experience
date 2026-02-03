@@ -18,113 +18,104 @@ const fragmentShader = `
   uniform float iColorShift;
   varying vec3 vWorldPosition;
 
-  // Optimized hash functions
+  // Hash functions
   float hash(vec3 p) {
     p = fract(p * vec3(443.897, 397.297, 491.187));
     p += dot(p, p.yxz + 19.19);
     return fract((p.x + p.y) * p.z);
   }
 
-  float hash2(vec2 p) {
-    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-  }
-
-  // Phase timing constants
+  // Phase timing
   const float PHASE_DURATION = 70.0;
-  const float TRANSITION_DURATION = 5.0;
+  const float TRANSITION_TIME = 5.0;
 
-  // Beacon colors for each phase
+  // Beacon colors
   vec3 getBeaconColor(int phase) {
     if (phase == 0) return vec3(1.0, 0.15, 0.1);      // Red
     if (phase == 1) return vec3(0.1, 0.9, 0.4);       // Emerald
     if (phase == 2) return vec3(0.15, 0.4, 1.0);      // Sapphire
     if (phase == 3) return vec3(1.0, 0.75, 0.2);      // Golden
     if (phase == 4) return vec3(0.7, 0.2, 0.9);       // Amethyst
-    return vec3(1.0, 1.0, 0.95);                       // White finale
+    return vec3(1.0, 1.0, 0.95);                       // White
   }
 
-  // Grid light colors for each phase
-  vec3 getGridBaseColor(int phase, float h) {
+  // Grid colors
+  vec3 getGridColor(int phase, float h) {
     if (phase == 0) {
-      // Cool blue/white
       vec3 coolBlue = vec3(0.7, 0.85, 1.0);
       vec3 warmAccent = vec3(1.0, 0.8, 0.5);
       return mix(coolBlue, warmAccent, smoothstep(0.7, 0.9, h));
     }
     if (phase == 1) {
-      // Red/crimson
-      vec3 deepRed = vec3(1.0, 0.2, 0.15);
-      vec3 orangeRed = vec3(1.0, 0.5, 0.2);
-      return mix(deepRed, orangeRed, h);
+      return mix(vec3(1.0, 0.2, 0.15), vec3(1.0, 0.5, 0.2), h);
     }
     if (phase == 2) {
-      // Emerald green
-      vec3 deepGreen = vec3(0.1, 0.85, 0.4);
-      vec3 tealGreen = vec3(0.2, 1.0, 0.7);
-      return mix(deepGreen, tealGreen, h);
+      return mix(vec3(0.1, 0.85, 0.4), vec3(0.2, 1.0, 0.7), h);
     }
     if (phase == 3) {
-      // Sapphire blue
-      vec3 deepBlue = vec3(0.15, 0.35, 1.0);
-      vec3 cyanBlue = vec3(0.3, 0.7, 1.0);
-      return mix(deepBlue, cyanBlue, h);
+      return mix(vec3(0.15, 0.35, 1.0), vec3(0.3, 0.7, 1.0), h);
     }
     if (phase == 4) {
-      // Golden amber
-      vec3 gold = vec3(1.0, 0.8, 0.2);
-      vec3 amber = vec3(1.0, 0.6, 0.1);
-      return mix(gold, amber, h);
+      return mix(vec3(1.0, 0.8, 0.2), vec3(1.0, 0.6, 0.1), h);
     }
-    // Amethyst purple (phase 5)
-    vec3 purple = vec3(0.7, 0.2, 0.9);
-    vec3 violet = vec3(0.9, 0.4, 1.0);
-    return mix(purple, violet, h);
+    return mix(vec3(0.7, 0.2, 0.9), vec3(0.9, 0.4, 1.0), h);
+  }
+
+  // Get spacing for each geometry
+  float getSpacing(int phase) {
+    if (phase == 0) return 2.2;  // Cubic
+    if (phase == 1) return 1.8;  // Hexagonal
+    if (phase == 2) return 3.0;  // Spherical
+    if (phase == 3) return 2.5;  // Pillars
+    if (phase == 4) return 2.0;  // Diamond
+    return 2.0;                   // Spiral
   }
 
   void main() {
     vec3 rd = normalize(vWorldPosition);
     vec3 col = vec3(0.0);
 
-    // === INTRO PHASE ===
+    // === INTRO PHASES ===
     float singleLightFadeIn = smoothstep(0.0, 0.25, iIntroProgress);
     float singleLightFadeOut = 1.0 - smoothstep(0.7, 1.0, iIntroProgress);
     float singleLightPhase = singleLightFadeIn * singleLightFadeOut;
     float multiplyPhase = smoothstep(0.2, 0.95, iIntroProgress);
+    float introComplete = smoothstep(0.95, 1.0, iIntroProgress);
 
-    // Central singular light
+    // Central light during intro
     float centralDist = length(rd.xz);
     float centralGlow = exp(-centralDist * centralDist * 3.0) * singleLightPhase;
     col += vec3(1.0, 0.95, 0.9) * centralGlow * 1.5;
 
-    // === PHASE CALCULATION ===
-    float motionPhase = smoothstep(0.95, 1.0, iIntroProgress);
-    float timeSinceMotion = max(0.0, iTime - 5.0); // Assuming intro ~5s
-
-    // Current phase (0-5)
-    int currentPhase = int(floor(timeSinceMotion / PHASE_DURATION));
+    // === JOURNEY PHASE CALCULATION ===
+    float journeyTime = max(0.0, iTime - 5.0); // Time since intro
+    int currentPhase = int(floor(journeyTime / PHASE_DURATION));
     currentPhase = min(currentPhase, 5);
+    float phaseTime = mod(journeyTime, PHASE_DURATION);
 
-    // Time within current phase
-    float phaseTime = mod(timeSinceMotion, PHASE_DURATION);
+    // Transition timing
+    float transitionStart = PHASE_DURATION - TRANSITION_TIME;
+    float inTransition = smoothstep(transitionStart, PHASE_DURATION, phaseTime);
+    float postTransition = smoothstep(0.0, 3.0, phaseTime); // Fade in after transition
 
-    // Transition progress (0 = normal, 1 = peak transition)
-    float transitionStart = PHASE_DURATION - TRANSITION_DURATION;
-    float transitionProgress = smoothstep(transitionStart, PHASE_DURATION, phaseTime);
-    float transitionFlash = sin(transitionProgress * 3.14159) * transitionProgress;
+    // Grid visibility: full during phase, fade during transition, fade in at start
+    float gridVisibility = 1.0;
+    if (phaseTime > transitionStart) {
+      gridVisibility = 1.0 - smoothstep(transitionStart, PHASE_DURATION - 1.0, phaseTime);
+    }
+    if (phaseTime < 3.0 && journeyTime > 1.0) {
+      gridVisibility *= postTransition;
+    }
 
-    // Grid visibility (fades during transition)
-    float gridFade = 1.0 - smoothstep(transitionStart, PHASE_DURATION - 1.0, phaseTime);
-    float nextGridFade = smoothstep(0.0, 3.0, phaseTime); // Fade in after transition
-
-    // Forward motion - continuous through phases
+    // Forward motion
     float forwardMotion = 0.0;
-    if (iIntroProgress >= 0.95) {
-      float accelCurve = smoothstep(0.0, 15.0, timeSinceMotion);
-      forwardMotion = timeSinceMotion * 0.8 * accelCurve;
+    if (introComplete > 0.0) {
+      float accel = smoothstep(0.0, 15.0, journeyTime);
+      forwardMotion = journeyTime * 0.8 * accel;
     }
 
     // === BEACON ===
-    if (motionPhase > 0.0 && currentPhase < 6) {
+    if (introComplete > 0.0 && currentPhase < 6) {
       float beaconDistX = abs(rd.x);
       float beaconDistY = abs(rd.y);
       float forwardFacing = smoothstep(0.1, -0.4, rd.z);
@@ -132,126 +123,151 @@ const fragmentShader = `
       float beamWidth = exp(-beaconDistX * beaconDistX * 25.0);
       float beamHeight = smoothstep(0.9, 0.0, beaconDistY);
       float beaconCore = beamWidth * beamHeight * forwardFacing;
-      float beaconGlow = exp(-beaconDistX * beaconDistX * 8.0) * forwardFacing * smoothstep(0.95, 0.2, beaconDistY);
+      float beaconGlow = exp(-beaconDistX * beaconDistX * 8.0) * forwardFacing;
+      beaconGlow *= smoothstep(0.95, 0.2, beaconDistY);
 
-      float beaconPulse = sin(iTime * 0.8) * 0.15 + 0.85;
+      float pulse = sin(iTime * 0.8) * 0.15 + 0.85;
 
-      // Beacon brightness increases as transition approaches
-      float approachBrightness = 1.0 + smoothstep(transitionStart - 20.0, transitionStart, phaseTime) * 2.0;
-      // Flash bright during transition
-      approachBrightness += transitionFlash * 3.0;
+      // Beacon intensifies near transition
+      float approachBright = 1.0 + smoothstep(transitionStart - 25.0, transitionStart, phaseTime) * 2.5;
+      approachBright += inTransition * 4.0; // Flash during transition
 
-      float horizonBeaconIntensity = (beaconCore * 2.0 + beaconGlow * 0.8) * beaconPulse * motionPhase * approachBrightness;
+      float beaconIntensity = (beaconCore * 2.0 + beaconGlow * 0.8) * pulse * introComplete * approachBright;
 
       vec3 beaconColor = getBeaconColor(currentPhase);
-      col += beaconColor * horizonBeaconIntensity;
+      col += beaconColor * beaconIntensity;
+
+      // Transition flash
+      if (inTransition > 0.0) {
+        float flash = sin(inTransition * 3.14159);
+        col += beaconColor * flash * 2.5;
+      }
     }
 
-    // === TRANSITION FLASH ===
-    if (transitionFlash > 0.0) {
-      vec3 flashColor = getBeaconColor(currentPhase);
-      col += flashColor * transitionFlash * 2.0;
-    }
-
-    // === GRID RENDERING ===
-    if (iIntroProgress > 0.15 && motionPhase > 0.0) {
+    // === INTRO GRID (cubic only, multiplying outward) ===
+    if (iIntroProgress > 0.15 && introComplete < 1.0) {
       float spacing = 2.2;
       float t = 0.2;
-      float maxRevealDist = 3.0 + multiplyPhase * 57.0;
+      float maxDist = 3.0 + multiplyPhase * 57.0;
+
+      for(int i = 0; i < 48; i++) {
+        vec3 p = rd * t;
+        vec3 cellId = floor(p / spacing);
+        vec3 q = mod(p, spacing) - spacing * 0.5;
+
+        if (abs(cellId.x) < 0.5 && abs(cellId.y) < 0.5 && abs(cellId.z) < 0.5) {
+          t += 0.5;
+          continue;
+        }
+
+        float h = hash(cellId);
+        float h2 = fract(h * 127.1);
+        float h3 = fract(h * 311.7);
+
+        float d = length(q);
+        float lightSize = 0.03 + h * 0.05;
+        float core = smoothstep(lightSize, 0.0, d) * 3.0;
+        float glow = lightSize / (d + 0.02);
+        float light = core + glow * glow * 0.4;
+
+        light *= (0.7 + h3 * 0.5) / (1.0 + t * 0.025);
+
+        float cellDist = length(cellId) * spacing;
+        float reveal = smoothstep(maxDist, maxDist - 8.0, cellDist);
+        light *= reveal * multiplyPhase * (1.0 - introComplete);
+
+        vec3 lightColor = mix(vec3(0.7, 0.85, 1.0), vec3(1.0, 0.8, 0.5), smoothstep(0.7, 0.9, h2));
+        col += lightColor * light;
+
+        t += max(d * 0.6, 0.3);
+        if (t > maxDist) break;
+      }
+    }
+
+    // === JOURNEY GRIDS (after intro, with geometry changes) ===
+    if (introComplete > 0.0) {
+      float spacing = getSpacing(currentPhase);
+      float t = 0.2;
+      float maxDist = 60.0;
 
       for(int i = 0; i < 48; i++) {
         vec3 motionOffset = vec3(0.0, 0.0, -forwardMotion);
         vec3 p = rd * t + motionOffset;
 
-        float h = 0.0;
-        float h2 = 0.0;
-        float h3 = 0.0;
-        vec3 q = vec3(0.0);
-        vec3 cellId = vec3(0.0);
-        float d = 0.0;
+        vec3 cellId;
+        float d;
+        float h;
 
-        // === GEOMETRY SELECTION BASED ON PHASE ===
+        // === GEOMETRY PER PHASE ===
         if (currentPhase == 0) {
-          // CUBIC GRID
+          // CUBIC
           cellId = floor(p / spacing);
-          q = mod(p, spacing) - spacing * 0.5;
+          vec3 q = mod(p, spacing) - spacing * 0.5;
           d = length(q);
           h = hash(cellId);
         }
         else if (currentPhase == 1) {
-          // HEXAGONAL HONEYCOMB
-          float hexSize = 1.8;
+          // HEXAGONAL
+          float hexSize = spacing;
           vec2 hexP = p.xz;
-          // Hex grid offset
           float row = floor(p.y / hexSize);
           if (mod(row, 2.0) > 0.5) hexP.x += hexSize * 0.5;
           vec2 hexCell = floor(hexP / hexSize);
           vec2 hexQ = mod(hexP, hexSize) - hexSize * 0.5;
           cellId = vec3(hexCell.x, row, hexCell.y);
-          q = vec3(hexQ.x, mod(p.y, hexSize) - hexSize * 0.5, hexQ.y);
-          d = length(q);
+          d = length(vec3(hexQ.x, mod(p.y, hexSize) - hexSize * 0.5, hexQ.y));
           h = hash(cellId);
         }
         else if (currentPhase == 2) {
-          // SPHERICAL SHELLS - concentric rings
-          float shellSpacing = 3.0;
-          float shellRadius = length(p);
-          float shellId = floor(shellRadius / shellSpacing);
-          float shellQ = mod(shellRadius, shellSpacing) - shellSpacing * 0.5;
-          // Angular position on shell
+          // SPHERICAL SHELLS
+          float radius = length(p);
+          float shellId = floor(radius / spacing);
+          float shellQ = mod(radius, spacing) - spacing * 0.5;
           float theta = atan(p.z, p.x);
-          float phi = asin(p.y / max(shellRadius, 0.01));
-          float angularCell = floor(theta * 3.0 + phi * 2.0);
-          cellId = vec3(shellId, angularCell, floor(phi * 4.0));
-          d = abs(shellQ) + abs(mod(theta * shellRadius, 1.5) - 0.75) * 0.5;
+          float phi = asin(clamp(p.y / max(radius, 0.01), -1.0, 1.0));
+          cellId = vec3(shellId, floor(theta * 2.0), floor(phi * 3.0));
+          d = abs(shellQ) * 0.8;
           h = hash(cellId);
         }
         else if (currentPhase == 3) {
           // VERTICAL PILLARS
-          float pillarSpacing = 2.5;
-          vec2 pillarCell = floor(p.xz / pillarSpacing);
-          vec2 pillarQ = mod(p.xz, pillarSpacing) - pillarSpacing * 0.5;
-          // Lights stacked vertically on pillars
-          float verticalCell = floor(p.y / 1.5);
-          cellId = vec3(pillarCell.x, verticalCell, pillarCell.y);
-          q = vec3(pillarQ.x, mod(p.y, 1.5) - 0.75, pillarQ.y);
-          d = length(vec2(length(pillarQ), q.y)); // Distance to pillar axis
+          vec2 pillarCell = floor(p.xz / spacing);
+          vec2 pillarQ = mod(p.xz, spacing) - spacing * 0.5;
+          float vCell = floor(p.y / 1.5);
+          cellId = vec3(pillarCell.x, vCell, pillarCell.y);
+          float pillarDist = length(pillarQ);
+          float vQ = mod(p.y, 1.5) - 0.75;
+          d = length(vec2(pillarDist, vQ));
           h = hash(cellId);
         }
         else if (currentPhase == 4) {
-          // DIAMOND/OCTAHEDRAL LATTICE
-          float diamondSpacing = 2.0;
-          // Offset every other layer
+          // DIAMOND LATTICE
           vec3 offset = vec3(0.0);
-          float layer = floor(p.y / diamondSpacing);
-          if (mod(layer, 2.0) > 0.5) {
-            offset.xz = vec2(diamondSpacing * 0.5);
-          }
+          float layer = floor(p.y / spacing);
+          if (mod(layer, 2.0) > 0.5) offset.xz = vec2(spacing * 0.5);
           vec3 dp = p + offset;
-          cellId = floor(dp / diamondSpacing);
-          q = mod(dp, diamondSpacing) - diamondSpacing * 0.5;
-          // Diamond distance (octahedral)
-          d = (abs(q.x) + abs(q.y) + abs(q.z)) * 0.6;
+          cellId = floor(dp / spacing);
+          vec3 q = mod(dp, spacing) - spacing * 0.5;
+          d = (abs(q.x) + abs(q.y) + abs(q.z)) * 0.5;
           h = hash(cellId);
         }
         else {
-          // SPIRAL (phase 5+)
-          float spiralRadius = length(p.xz);
-          float spiralAngle = atan(p.z, p.x);
-          // Spiral arm calculation
-          float armAngle = spiralAngle + spiralRadius * 0.5 + p.y * 0.3;
-          float armId = floor(armAngle / 1.047); // 6 arms
+          // SPIRAL
+          float radius = length(p.xz);
+          float angle = atan(p.z, p.x);
+          float armAngle = angle + radius * 0.4 + p.y * 0.2;
+          float armId = floor(armAngle / 1.047);
           float armQ = mod(armAngle, 1.047) - 0.524;
-          cellId = vec3(floor(spiralRadius / 2.0), armId, floor(p.y / 1.5));
-          d = abs(armQ) * spiralRadius * 0.3 + abs(mod(spiralRadius, 2.0) - 1.0);
+          cellId = vec3(floor(radius / spacing), armId, floor(p.y / 1.5));
+          d = abs(armQ) * max(radius * 0.25, 0.5) + abs(mod(radius, spacing) - spacing * 0.5) * 0.5;
           h = hash(cellId);
         }
 
-        h2 = fract(h * 127.1);
-        h3 = fract(h * 311.7);
+        float h2 = fract(h * 127.1);
+        float h3 = fract(h * 311.7);
 
-        // Skip central cells at start
-        if (length(cellId) < 0.5 && forwardMotion < 1.0) {
+        // Skip origin
+        if (length(cellId) < 0.5 && forwardMotion < 2.0) {
           t += 0.5;
           continue;
         }
@@ -259,33 +275,27 @@ const fragmentShader = `
         float lightSize = 0.03 + h * 0.05;
         float core = smoothstep(lightSize, 0.0, d) * 3.0;
         float glow = lightSize / (d + 0.02);
-        float halo = glow * glow * 0.4;
-        float light = core + halo;
+        float light = core + glow * glow * 0.4;
 
         light *= (0.7 + h3 * 0.5) / (1.0 + t * 0.025);
 
-        // Reveal fade
+        // Visibility
         float cellDist = length(cellId) * spacing;
-        float revealFade = smoothstep(maxRevealDist, maxRevealDist - 8.0, cellDist);
-        light *= revealFade * multiplyPhase;
+        float reveal = smoothstep(maxDist, maxDist - 10.0, cellDist);
+        light *= reveal * gridVisibility * introComplete;
 
-        // Apply grid fade during transitions
-        light *= mix(gridFade, nextGridFade, smoothstep(0.0, 0.5, phaseTime / PHASE_DURATION));
+        // Color
+        vec3 lightColor = getGridColor(currentPhase, h2);
 
-        // Get phase-appropriate color
-        vec3 lightColor = getGridBaseColor(currentPhase, h2);
-
-        // Color shift toward next beacon near horizon
+        // Tint toward beacon near horizon
         float forwardness = smoothstep(0.2, -0.6, rd.z);
-        float horizonProximity = smoothstep(0.4, 0.0, abs(rd.y));
-        float beaconShiftAmount = forwardness * horizonProximity * 0.5;
-        vec3 beaconTint = getBeaconColor(currentPhase);
-        lightColor = mix(lightColor, beaconTint, beaconShiftAmount);
+        float horizonProx = smoothstep(0.4, 0.0, abs(rd.y));
+        lightColor = mix(lightColor, getBeaconColor(currentPhase), forwardness * horizonProx * 0.4);
 
         col += lightColor * light;
 
-        t += max(d * 0.6, 0.3);
-        if(t > maxRevealDist) break;
+        t += max(d * 0.5, 0.3);
+        if (t > maxDist) break;
       }
     }
 
