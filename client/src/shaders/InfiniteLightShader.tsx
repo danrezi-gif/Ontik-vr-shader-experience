@@ -25,8 +25,13 @@ const fragmentShader = `
     return fract((p.x + p.y) * p.z);
   }
 
-  // Phase timing
-  const float PHASE_DURATION = 70.0;
+  // Cosine palette for fractal phases
+  vec3 cosinePalette(float t, vec3 brightness, vec3 contrast, vec3 oscilation, vec3 phase) {
+    return brightness + contrast * cos(6.28318 * (oscilation * t + phase));
+  }
+
+  // Phase timing - adjusted for 9:48 track
+  const float PHASE_DURATION = 97.0;
   const float TRANSITION_TIME = 5.0;
 
   // Beacon colors
@@ -40,7 +45,7 @@ const fragmentShader = `
   }
 
   // Grid colors
-  vec3 getGridColor(int phase, float h) {
+  vec3 getGridColor(int phase, float h, float iTime) {
     if (phase == 0) {
       vec3 coolBlue = vec3(0.7, 0.85, 1.0);
       vec3 warmAccent = vec3(1.0, 0.8, 0.5);
@@ -50,7 +55,8 @@ const fragmentShader = `
       return mix(vec3(1.0, 0.2, 0.15), vec3(1.0, 0.5, 0.2), h);
     }
     if (phase == 2) {
-      return mix(vec3(0.1, 0.85, 0.4), vec3(0.2, 1.0, 0.7), h);
+      // Cosine palette - cycling colors like the fractal shader
+      return cosinePalette(h + iTime * 0.1, vec3(0.5), vec3(0.5), vec3(1.0), vec3(0.263, 0.416, 0.557));
     }
     if (phase == 3) {
       return mix(vec3(0.15, 0.35, 1.0), vec3(0.3, 0.7, 1.0), h);
@@ -58,7 +64,8 @@ const fragmentShader = `
     if (phase == 4) {
       return mix(vec3(1.0, 0.8, 0.2), vec3(1.0, 0.6, 0.1), h);
     }
-    return mix(vec3(0.7, 0.2, 0.9), vec3(0.9, 0.4, 1.0), h);
+    // Phase 5: Rainbow cycling for rotational fractal
+    return cosinePalette(h * 2.0 + iTime * 0.15, vec3(0.5), vec3(0.6), vec3(1.0, 1.0, 0.8), vec3(0.0, 0.1, 0.2));
   }
 
   // Get spacing for each geometry
@@ -222,15 +229,22 @@ const fragmentShader = `
           h = hash(cellId);
         }
         else if (currentPhase == 2) {
-          // SPHERICAL SHELLS
-          float radius = length(p);
-          float shellId = floor(radius / spacing);
-          float shellQ = mod(radius, spacing) - spacing * 0.5;
-          float theta = atan(p.z, p.x);
-          float phi = asin(clamp(p.y / max(radius, 0.01), -1.0, 1.0));
-          cellId = vec3(shellId, floor(theta * 2.0), floor(phi * 3.0));
-          d = abs(shellQ) * 0.8;
-          h = hash(cellId);
+          // FRACTAL ITERATIVE (inspired by palette shader)
+          vec2 uv = p.xz * 0.3;
+          vec2 uv0 = uv;
+          float fractalD = 0.0;
+          float iter = 0.0;
+          for (float j = 1.0; j < 4.0; j++) {
+            uv = fract(uv * 1.5) - 0.5;
+            float fd = length(uv) * exp(-length(uv0));
+            fd = sin(fd * 8.0 + iTime * 0.5 + p.y) / 8.0;
+            fd = abs(fd);
+            fractalD += fd;
+            iter = j;
+          }
+          cellId = vec3(floor(p.x / spacing), floor(p.y / spacing), floor(p.z / spacing));
+          d = fractalD * 2.0 + length(mod(p, spacing) - spacing * 0.5) * 0.3;
+          h = hash(cellId) + iter * 0.1;
         }
         else if (currentPhase == 3) {
           // VERTICAL PILLARS
@@ -255,14 +269,23 @@ const fragmentShader = `
           h = hash(cellId);
         }
         else {
-          // SPIRAL
-          float radius = length(p.xz);
-          float angle = atan(p.z, p.x);
-          float armAngle = angle + radius * 0.4 + p.y * 0.2;
-          float armId = floor(armAngle / 1.047);
-          float armQ = mod(armAngle, 1.047) - 0.524;
-          cellId = vec3(floor(radius / spacing), armId, floor(p.y / 1.5));
-          d = abs(armQ) * max(radius * 0.25, 0.5) + abs(mod(radius, spacing) - spacing * 0.5) * 0.5;
+          // ROTATIONAL FRACTAL (inspired by matrix rotation shader)
+          vec2 M = p.xz * 0.4;
+          float S = length(M);
+          float T = iTime * 0.5;
+          float fractalAcc = 0.0;
+          for (float R = 1.0; R < 6.0; R++) {
+            // Rotation matrix
+            float angle = T * 0.05 + R * 0.5;
+            float c = cos(angle);
+            float s = sin(angle);
+            vec2 rotM = vec2(M.x * c - M.y * s, M.x * s + M.y * c);
+            vec2 A = fract(rotM * (1.5 + R * 0.1)) - 0.5;
+            float wave = sin(length(A) * exp(length(A) * 1.5 - S) * 7.0 + sin(T) * 0.5 + p.y * 2.0);
+            fractalAcc += 0.15 / (abs(wave) * 0.5 + 0.1);
+          }
+          cellId = vec3(floor(p.x / spacing), floor(p.y / 1.5), floor(p.z / spacing));
+          d = 1.0 / (fractalAcc * 0.3 + 0.5);
           h = hash(cellId);
         }
 
@@ -280,6 +303,12 @@ const fragmentShader = `
         float glow = lightSize / (d + 0.02);
         float light = core + glow * glow * 0.4;
 
+        // Enhanced glow for fractal phases (2 and 5)
+        if (currentPhase == 2 || currentPhase == 5) {
+          float fractalGlow = pow(0.012 / (d + 0.01), 1.2);
+          light = light * 0.5 + fractalGlow * 0.8;
+        }
+
         light *= (0.7 + h3 * 0.5) / (1.0 + t * 0.025);
 
         // Visibility
@@ -288,7 +317,7 @@ const fragmentShader = `
         light *= reveal * gridVisibility * introComplete;
 
         // Color
-        vec3 lightColor = getGridColor(currentPhase, h2);
+        vec3 lightColor = getGridColor(currentPhase, h2, iTime);
 
         // Tint toward beacon near horizon
         float forwardness = smoothstep(0.2, -0.6, rd.z);
