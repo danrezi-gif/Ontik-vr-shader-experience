@@ -25,11 +25,6 @@ const fragmentShader = `
     return fract((p.x + p.y) * p.z);
   }
 
-  // Cosine palette for fractal phases
-  vec3 cosinePalette(float t, vec3 brightness, vec3 contrast, vec3 oscilation, vec3 phase) {
-    return brightness + contrast * cos(6.28318 * (oscilation * t + phase));
-  }
-
   // Phase timing - adjusted for 9:48 track
   const float PHASE_DURATION = 97.0;
   const float TRANSITION_TIME = 5.0;
@@ -38,14 +33,14 @@ const fragmentShader = `
   vec3 getBeaconColor(int phase) {
     if (phase == 0) return vec3(1.0, 0.15, 0.1);      // Red
     if (phase == 1) return vec3(0.1, 0.9, 0.4);       // Emerald
-    if (phase == 2) return vec3(0.15, 0.4, 1.0);      // Sapphire
+    if (phase == 2) return vec3(0.3, 0.9, 1.0);       // Cyan (neon)
     if (phase == 3) return vec3(1.0, 0.75, 0.2);      // Golden
     if (phase == 4) return vec3(0.7, 0.2, 0.9);       // Amethyst
     return vec3(1.0, 1.0, 0.95);                       // White
   }
 
   // Grid colors
-  vec3 getGridColor(int phase, float h, float iTime) {
+  vec3 getGridColor(int phase, float h, float shellAngle, float time) {
     if (phase == 0) {
       vec3 coolBlue = vec3(0.7, 0.85, 1.0);
       vec3 warmAccent = vec3(1.0, 0.8, 0.5);
@@ -55,8 +50,13 @@ const fragmentShader = `
       return mix(vec3(1.0, 0.2, 0.15), vec3(1.0, 0.5, 0.2), h);
     }
     if (phase == 2) {
-      // Cosine palette - cycling colors like the fractal shader
-      return cosinePalette(h + iTime * 0.1, vec3(0.5), vec3(0.5), vec3(1.0), vec3(0.263, 0.416, 0.557));
+      // Neon ring palette - cyan to magenta with angle-based variation
+      float angleMix = sin(shellAngle * 2.0 + time * 0.3) * 0.5 + 0.5;
+      vec3 cyan = vec3(0.1, 0.9, 1.0);
+      vec3 magenta = vec3(1.0, 0.2, 0.8);
+      vec3 blue = vec3(0.2, 0.4, 1.0);
+      vec3 baseColor = mix(cyan, magenta, angleMix);
+      return mix(baseColor, blue, h * 0.4);
     }
     if (phase == 3) {
       return mix(vec3(0.15, 0.35, 1.0), vec3(0.3, 0.7, 1.0), h);
@@ -64,8 +64,7 @@ const fragmentShader = `
     if (phase == 4) {
       return mix(vec3(1.0, 0.8, 0.2), vec3(1.0, 0.6, 0.1), h);
     }
-    // Phase 5: Rainbow cycling for rotational fractal
-    return cosinePalette(h * 2.0 + iTime * 0.15, vec3(0.5), vec3(0.6), vec3(1.0, 1.0, 0.8), vec3(0.0, 0.1, 0.2));
+    return mix(vec3(0.7, 0.2, 0.9), vec3(0.9, 0.4, 1.0), h);
   }
 
   // Get spacing for each geometry
@@ -123,8 +122,8 @@ const fragmentShader = `
       forwardMotion = phaseTime * 0.8 * accel;
     }
 
-    // === BEACON ===
-    if (introComplete > 0.0 && currentPhase < 6) {
+    // === BEACON === (disabled for phase 5 - warp void has no destination)
+    if (introComplete > 0.0 && currentPhase < 5) {
       float beaconDistX = abs(rd.x);
       float beaconDistY = abs(rd.y);
       float forwardFacing = smoothstep(0.1, -0.4, rd.z);
@@ -207,6 +206,7 @@ const fragmentShader = `
         vec3 cellId;
         float d;
         float h;
+        float shellAngle = 0.0;
 
         // === GEOMETRY PER PHASE ===
         if (currentPhase == 0) {
@@ -229,22 +229,18 @@ const fragmentShader = `
           h = hash(cellId);
         }
         else if (currentPhase == 2) {
-          // FRACTAL ITERATIVE (inspired by palette shader)
-          vec2 uv = p.xz * 0.3;
-          vec2 uv0 = uv;
-          float fractalD = 0.0;
-          float iter = 0.0;
-          for (float j = 1.0; j < 4.0; j++) {
-            uv = fract(uv * 1.5) - 0.5;
-            float fd = length(uv) * exp(-length(uv0));
-            fd = sin(fd * 8.0 + iTime * 0.5 + p.y) / 8.0;
-            fd = abs(fd);
-            fractalD += fd;
-            iter = j;
-          }
-          cellId = vec3(floor(p.x / spacing), floor(p.y / spacing), floor(p.z / spacing));
-          d = fractalD * 2.0 + length(mod(p, spacing) - spacing * 0.5) * 0.3;
-          h = hash(cellId) + iter * 0.1;
+          // SPHERICAL SHELLS - neon ring style
+          float radius = length(p);
+          float shellId = floor(radius / spacing);
+          float shellQ = mod(radius, spacing) - spacing * 0.5;
+          float theta = atan(p.z, p.x);
+          float phi = asin(clamp(p.y / max(radius, 0.01), -1.0, 1.0));
+          cellId = vec3(shellId, floor(theta * 3.0), floor(phi * 4.0));
+          // Tighter ring effect
+          d = abs(shellQ) * 0.6;
+          h = hash(cellId);
+          // Store angle for color cycling
+          shellAngle = theta + phi * 2.0;
         }
         else if (currentPhase == 3) {
           // VERTICAL PILLARS
@@ -269,24 +265,49 @@ const fragmentShader = `
           h = hash(cellId);
         }
         else {
-          // ROTATIONAL FRACTAL (inspired by matrix rotation shader)
-          vec2 M = p.xz * 0.4;
-          float S = length(M);
-          float T = iTime * 0.5;
-          float fractalAcc = 0.0;
-          for (float R = 1.0; R < 6.0; R++) {
-            // Rotation matrix
-            float angle = T * 0.05 + R * 0.5;
-            float c = cos(angle);
-            float s = sin(angle);
-            vec2 rotM = vec2(M.x * c - M.y * s, M.x * s + M.y * c);
-            vec2 A = fract(rotM * (1.5 + R * 0.1)) - 0.5;
-            float wave = sin(length(A) * exp(length(A) * 1.5 - S) * 7.0 + sin(T) * 0.5 + p.y * 2.0);
-            fractalAcc += 0.15 / (abs(wave) * 0.5 + 0.1);
-          }
-          cellId = vec3(floor(p.x / spacing), floor(p.y / 1.5), floor(p.z / spacing));
-          d = 1.0 / (fractalAcc * 0.3 + 0.5);
+          // PHASE 5: WARP THROUGH THE VOID
+          // Lights move TOWARD user, short lifespans, darkness with bright flashes
+
+          // Use spherical coordinates for omnidirectional spawning
+          float theta = atan(p.z, p.x);
+          float phi = asin(clamp(p.y / max(length(p), 0.01), -1.0, 1.0));
+          float dist = length(p);
+
+          // Time-based cell that creates movement toward viewer
+          float speed = 4.0; // Fast movement
+          float movingDist = dist + phaseTime * speed;
+
+          // Sparse, random cell distribution
+          float cellSize = 3.5;
+          cellId = vec3(
+            floor(theta * 3.0 + sin(phi * 5.0) * 0.5),
+            floor(phi * 4.0 + cos(theta * 3.0) * 0.5),
+            floor(movingDist / cellSize)
+          );
+
           h = hash(cellId);
+          float h4 = fract(h * 531.7);
+
+          // Lifespan: each light appears, brightens, fades (2-4 second cycle)
+          float lifespan = 2.0 + h * 2.0;
+          float birthTime = h4 * lifespan;
+          float localTime = mod(phaseTime + birthTime, lifespan);
+          float lifeFade = sin(localTime / lifespan * 3.14159); // Smooth in-out
+
+          // Only ~40% of cells have visible lights (darkness)
+          float spawnChance = step(0.6, h);
+          lifeFade *= spawnChance;
+
+          // Distance within cell
+          float cellDist = mod(movingDist, cellSize);
+          d = abs(cellDist - cellSize * 0.5) * 0.4;
+
+          // Streak effect: elongate based on speed
+          float streak = smoothstep(0.8, 0.0, abs(cellDist - cellSize * 0.5) / cellSize);
+          d = mix(d, d * 0.3, streak * 0.5);
+
+          // Store lifeFade in h for use in lighting
+          h = lifeFade;
         }
 
         float h2 = fract(h * 127.1);
@@ -303,10 +324,27 @@ const fragmentShader = `
         float glow = lightSize / (d + 0.02);
         float light = core + glow * glow * 0.4;
 
-        // Enhanced glow for fractal phases (2 and 5)
-        if (currentPhase == 2 || currentPhase == 5) {
-          float fractalGlow = pow(0.012 / (d + 0.01), 1.2);
-          light = light * 0.5 + fractalGlow * 0.8;
+        // Enhanced neon glow for phase 2
+        if (currentPhase == 2) {
+          float neonGlow = exp(-d * d * 8.0) * 2.0;
+          float pulse = sin(iTime * 1.5 + shellAngle) * 0.3 + 1.0;
+          light = (core * 1.5 + glow * glow * 0.6 + neonGlow) * pulse;
+        }
+
+        // Phase 5: Warp void special lighting
+        if (currentPhase == 5) {
+          // h contains lifeFade for this phase
+          float lifeFade = h;
+
+          // Bright flash glow
+          float warpGlow = exp(-d * d * 15.0) * 3.0;
+          float streakGlow = exp(-d * 3.0) * 1.5;
+          light = (warpGlow + streakGlow) * lifeFade;
+
+          // Occasional bright beacon flashes
+          if (h3 > 0.92) {
+            light *= 3.0; // Extra bright beacons
+          }
         }
 
         light *= (0.7 + h3 * 0.5) / (1.0 + t * 0.025);
@@ -317,7 +355,23 @@ const fragmentShader = `
         light *= reveal * gridVisibility * introComplete;
 
         // Color
-        vec3 lightColor = getGridColor(currentPhase, h2, iTime);
+        vec3 lightColor = getGridColor(currentPhase, h2, shellAngle, iTime);
+
+        // Phase 5: Multi-color from all previous phases
+        if (currentPhase == 5) {
+          // Cycle through all phase colors based on cell hash
+          int colorPhase = int(mod(h2 * 6.0, 5.0));
+          if (colorPhase == 0) lightColor = vec3(1.0, 0.15, 0.1);       // Red
+          else if (colorPhase == 1) lightColor = vec3(0.1, 0.9, 0.4);   // Emerald
+          else if (colorPhase == 2) lightColor = vec3(0.3, 0.9, 1.0);   // Cyan
+          else if (colorPhase == 3) lightColor = vec3(1.0, 0.75, 0.2);  // Golden
+          else lightColor = vec3(0.7, 0.2, 0.9);                         // Amethyst
+
+          // Add white core to bright beacons
+          if (h3 > 0.92) {
+            lightColor = mix(lightColor, vec3(1.0), 0.5);
+          }
+        }
 
         // Tint toward beacon near horizon
         float forwardness = smoothstep(0.2, -0.6, rd.z);
@@ -328,6 +382,35 @@ const fragmentShader = `
 
         t += max(d * 0.5, 0.3);
         if (t > maxDist) break;
+      }
+    }
+
+    // === PHASE 5: PULSE WAVE RINGS ===
+    if (currentPhase == 5 && introComplete > 0.0) {
+      // Multiple expanding rings from random origins
+      for (int w = 0; w < 4; w++) {
+        float waveOffset = float(w) * 23.7;
+        float waveTime = mod(phaseTime + waveOffset, 12.0); // 12 second cycle per wave
+
+        // Ring expands outward then fades
+        float ringRadius = waveTime * 8.0; // Expansion speed
+        float ringFade = 1.0 - smoothstep(8.0, 12.0, waveTime);
+
+        // Distance from viewer to ring
+        float viewerDist = length(rd * ringRadius);
+        float ringDist = abs(length(vWorldPosition * 0.1) - ringRadius * 0.3);
+
+        // Thin glowing ring
+        float ringGlow = exp(-ringDist * ringDist * 2.0) * ringFade * 0.4;
+
+        // Ring color cycles
+        vec3 ringColor;
+        if (w == 0) ringColor = vec3(1.0, 0.2, 0.3);
+        else if (w == 1) ringColor = vec3(0.2, 0.9, 0.5);
+        else if (w == 2) ringColor = vec3(0.3, 0.5, 1.0);
+        else ringColor = vec3(1.0, 0.8, 0.2);
+
+        col += ringColor * ringGlow * gridVisibility;
       }
     }
 
