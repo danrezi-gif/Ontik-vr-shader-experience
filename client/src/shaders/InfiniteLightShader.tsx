@@ -45,6 +45,56 @@ const fragmentShader = `
     vec3 centralColor = vec3(1.0, 0.95, 0.9); // Warm white
     col += centralColor * centralGlow * 1.5;
 
+    // === FORWARD MOVEMENT after intro completes ===
+    float forwardMotion = 0.0;
+    float motionPhase = 0.0;
+    if (iIntroProgress >= 0.95) {
+      // Time since intro completed (assuming intro takes ~5 seconds)
+      float timeSinceStart = iTime;
+      // Gradual acceleration
+      float accelCurve = smoothstep(0.0, 15.0, timeSinceStart);
+      forwardMotion = timeSinceStart * 0.8 * accelCurve;
+      motionPhase = smoothstep(0.95, 1.0, iIntroProgress);
+    }
+
+    // === RED HORIZON BEACON ===
+    // Vertical light pillar at the forward horizon (rd.z > 0)
+    float horizonBeaconIntensity = 0.0;
+    if (motionPhase > 0.0) {
+      // Distance from forward axis (z-axis)
+      float beaconDistX = abs(rd.x);
+      float beaconDistY = abs(rd.y);
+
+      // Only visible when looking forward
+      float forwardFacing = smoothstep(-0.1, 0.4, rd.z);
+
+      // Vertical beam - tall and narrow
+      float beamWidth = exp(-beaconDistX * beaconDistX * 25.0);
+      float beamHeight = smoothstep(0.9, 0.0, beaconDistY); // Tall vertical extent
+
+      // Core intensity
+      float beaconCore = beamWidth * beamHeight * forwardFacing;
+
+      // Outer glow
+      float beaconGlow = exp(-beaconDistX * beaconDistX * 8.0) * forwardFacing;
+      beaconGlow *= smoothstep(0.95, 0.2, beaconDistY);
+
+      // Pulsing
+      float beaconPulse = sin(iTime * 0.8) * 0.15 + 0.85;
+
+      // Beacon grows brighter as you "approach" (over time)
+      float approachBrightness = 1.0 + smoothstep(0.0, 60.0, iTime) * 1.5;
+
+      horizonBeaconIntensity = (beaconCore * 2.0 + beaconGlow * 0.8) * beaconPulse * motionPhase * approachBrightness;
+
+      // Red/crimson color with orange-red outer glow
+      vec3 beaconCoreColor = vec3(1.0, 0.15, 0.1); // Deep red
+      vec3 beaconGlowColor = vec3(1.0, 0.3, 0.15); // Orange-red
+      vec3 beaconColor = mix(beaconGlowColor, beaconCoreColor, beaconCore / (beaconCore + 0.5));
+
+      col += beaconColor * horizonBeaconIntensity;
+    }
+
     // Only show grid lights after initial phase
     if (iIntroProgress > 0.15) {
       float spacing = 2.2;
@@ -54,12 +104,15 @@ const fragmentShader = `
       float maxRevealDist = 3.0 + multiplyPhase * 57.0; // 3 -> 60
 
       for(int i = 0; i < 48; i++) {
-        vec3 p = rd * t;
+        // Apply forward motion offset to create movement through grid
+        vec3 motionOffset = vec3(0.0, 0.0, forwardMotion);
+        vec3 p = rd * t + motionOffset;
+
         vec3 cellId = floor(p / spacing);
         vec3 q = mod(p, spacing) - spacing * 0.5;
 
         // Skip the central cell (0,0,0) to avoid doubling central light
-        if (abs(cellId.x) < 0.5 && abs(cellId.y) < 0.5 && abs(cellId.z) < 0.5) {
+        if (abs(cellId.x) < 0.5 && abs(cellId.y) < 0.5 && abs(cellId.z) < 0.5 && forwardMotion < 1.0) {
           t += 0.5;
           continue;
         }
@@ -83,10 +136,22 @@ const fragmentShader = `
         float revealFade = smoothstep(maxRevealDist, maxRevealDist - 8.0, cellDist);
         light *= revealFade * multiplyPhase;
 
+        // Base colors
         vec3 coolBlue = vec3(0.7, 0.85, 1.0);
         vec3 warmAccent = vec3(1.0, 0.8, 0.5);
         vec3 lightColor = mix(coolBlue, warmAccent, smoothstep(0.7, 0.9, h2));
         lightColor = mix(lightColor, vec3(0.6, 1.0, 0.85), smoothstep(0.4, 0.5, h2) * (1.0 - smoothstep(0.5, 0.6, h2)));
+
+        // === RED SHIFT near horizon ===
+        // Lights in front (positive z direction) shift toward red
+        if (motionPhase > 0.0) {
+          float forwardness = smoothstep(-0.2, 0.6, rd.z);
+          float horizonProximity = smoothstep(0.4, 0.0, abs(rd.y)); // Near horizontal plane
+          float redShiftAmount = forwardness * horizonProximity * motionPhase * 0.6;
+
+          vec3 redTint = vec3(1.0, 0.4, 0.3);
+          lightColor = mix(lightColor, redTint, redShiftAmount);
+        }
 
         col += lightColor * light;
 
