@@ -322,6 +322,7 @@ const SHADER_AUDIO: { [key: string]: string } = {
   'tunnel-lights': 'Russian chant - Покаяния отверзи ми двери.mp3',
   'infinite-light': 'Ligeti-Lux-Aeterna.mp3',
   'sacred-vessels': 'John Tavener - Funeral Canticle (The Tree of Life) FULL VERSION.mp3',
+  'platonic-solids': 'Vangelis - Spiral (Audio).mp3',
   'default': 'background-music.mp3'
 };
 
