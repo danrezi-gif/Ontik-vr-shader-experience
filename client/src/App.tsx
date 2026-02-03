@@ -398,14 +398,14 @@ function initAudioListener(camera: THREE.Camera) {
   positionalAudio.setDistanceModel('exponential');
   globalAudio.positionalAudio = positionalAudio;
 
-  // Create reverb effect
+  // Create reverb effect - enhanced for immersive experience
   const ctx = listener.context;
   const convolver = ctx.createConvolver();
   const reverbGain = ctx.createGain();
-  reverbGain.gain.value = 0.4; // Reverb wet mix
+  reverbGain.gain.value = 0.6; // Increased reverb wet mix for more immersion
 
-  // Create cathedral-like reverb (3 second decay)
-  convolver.buffer = createReverbImpulse(ctx, 3.0, 2.5);
+  // Create cathedral-like reverb (4 second decay for deeper immersion)
+  convolver.buffer = createReverbImpulse(ctx, 4.0, 2.0);
 
   globalAudio.convolver = convolver;
   globalAudio.reverbGain = reverbGain;
@@ -443,9 +443,21 @@ function playTrackForShader(shaderId: string) {
   activeAudio.setBuffer(buffer);
   globalAudio.currentTrack = shaderId;
 
-  // Connect reverb for positional audio
+  // Connect reverb for positional audio with shader-specific intensity
   if (isPositional && globalAudio.convolver && globalAudio.reverbGain) {
     const ctx = globalAudio.listener.context;
+
+    // Shader-specific reverb intensity - sacred-vessels gets most immersive
+    let reverbIntensity = 0.6;
+    if (shaderId === 'sacred-vessels') {
+      reverbIntensity = 0.85; // Maximum reverb for cathedral-like immersion
+    } else if (shaderId === 'tunnel-lights') {
+      reverbIntensity = 0.75; // High reverb for tunnel acoustics
+    } else if (shaderId === 'infinite-light') {
+      reverbIntensity = 0.7; // Strong reverb for expansive space
+    }
+    globalAudio.reverbGain.gain.value = reverbIntensity;
+
     try {
       // Get the audio source and connect through reverb
       const source = (activeAudio as any).source;
