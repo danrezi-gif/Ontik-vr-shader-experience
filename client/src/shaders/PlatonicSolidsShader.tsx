@@ -13,7 +13,8 @@ const vertexShader = `
   }
 `;
 
-// Rewritten to match the reference shader's accumulation-based raymarching style
+// Faithful execution of the reference shader
+// Object grows from distant to enormous, absorbing the user
 const fragmentShader = `
   precision highp float;
 
@@ -21,160 +22,68 @@ const fragmentShader = `
   varying vec3 vPosition;
   uniform float iTime;
   uniform float iIntroProgress;
-  uniform vec2 iResolution;
-
-  // Golden ratio for dodecahedron and icosahedron
-  #define PHI 1.618033988749895
-
-  // === PLATONIC SOLID SDFs ===
-  // Returns distance normalized by size factor for consistent glow
-
-  // Tetrahedron (4 faces)
-  float sdTetrahedron(vec3 p) {
-    float k = sqrt(2.0);
-    p.xz = abs(p.xz);
-    float m = 2.0 * p.z - k * p.y - 1.0;
-    p = (m > 0.0) ? p : vec3(p.z, p.y, p.x);
-    m = 2.0 * p.z - k * p.y - 1.0;
-    p = (m > 0.0) ? p : vec3(p.z, p.y, p.x);
-    p.xz -= clamp(p.xz, 0.0, 1.0);
-    return length(p) * sign(p.y);
-  }
-
-  // Octahedron (8 faces) - from reference shader style
-  float sdOctahedron(vec3 p) {
-    return (abs(p.x) + abs(p.y) + abs(p.z) - 3.5) / 1.732;
-  }
-
-  // Cube/Hexahedron (6 faces)
-  float sdCube(vec3 p) {
-    vec3 d = abs(p) - vec3(2.5);
-    return length(max(d, 0.0)) + min(max(d.x, max(d.y, d.z)), 0.0);
-  }
-
-  // Dodecahedron (12 faces)
-  float sdDodecahedron(vec3 p) {
-    vec3 n1 = normalize(vec3(PHI, 1.0, 0.0));
-    vec3 n2 = normalize(vec3(1.0, PHI, 0.0));
-    vec3 n3 = normalize(vec3(0.0, 1.0, PHI));
-    p = abs(p);
-    return max(max(dot(p, n1), dot(p, n2)), dot(p, n3)) - 2.8;
-  }
-
-  // Icosahedron (20 faces)
-  float sdIcosahedron(vec3 p) {
-    vec3 n1 = normalize(vec3(PHI, 1.0, 0.0));
-    vec3 n2 = normalize(vec3(1.0, 0.0, PHI));
-    vec3 n3 = normalize(vec3(0.0, PHI, 1.0));
-    p = abs(p);
-    return max(max(dot(p, n1), dot(p, n2)), dot(p, n3)) - 2.5;
-  }
 
   void main() {
-    // Setup ray from sphere position (like reference: f = (f - .5*res)/res.y/.1)
-    vec2 f = vPosition.xy * 10.0;
+    // Output color accumulator
+    vec4 o = vec4(0.0);
 
-    // Camera depth (z) and raymarch distance (d)
+    // Camera depth
     float z = 5.0;
+    // Raymarch step distance
     float d;
+
+    // Center and scale UVs (reference: f = (f - .5*res)/res.y/.1)
+    vec2 f = vPosition.xy * 10.0;
 
     // 3D sample point
     vec3 p;
 
-    // Output color accumulator (vec4 for the sin trick)
-    vec4 o = vec4(0.0);
+    // === SCALE: grows from small to ENORMOUS ===
+    // During intro: starts tiny, becomes massive
+    // Uses cubic easing for dramatic acceleration at end
+    float scaleProgress = iIntroProgress * iIntroProgress * iIntroProgress;
+    float scale = mix(0.08, 80.0, scaleProgress); // 0.08 -> 80x (1000x size increase)
 
-    // === INTRO PHASES ===
-    float introProgress = iIntroProgress;
+    // Rotation speed
+    float rotTime = iTime * 0.4;
 
-    // Early phase - just a point of light emerging
-    if (introProgress < 0.15) {
-      float pointPhase = smoothstep(0.0, 0.15, introProgress);
-      float pointDist = length(vPosition.xy);
-      float point = exp(-pointDist * 0.5) * pointPhase * 2.0;
-      gl_FragColor = vec4(vec3(0.9, 0.92, 1.0) * point, 1.0);
-      return;
-    }
-
-    // Calculate which solid to show (0-4)
-    // Slower cycle: each solid stays longer
-    float sequenceTime = introProgress < 1.0
-      ? (introProgress - 0.15) / 0.34  // During intro: ~2x slower, each solid gets more time
-      : iTime * 0.05;  // Post-intro: very slow cycle (was 0.12)
-
-    int solidIndex = int(mod(sequenceTime, 5.0));
-    float solidBlend = fract(sequenceTime);
-
-    // Fade factor for transitions
-    float fadeIn = smoothstep(0.0, 0.1, solidBlend);
-    float fadeOut = 1.0 - smoothstep(0.9, 1.0, solidBlend);
-    float solidAlpha = introProgress < 1.0 ? fadeIn : fadeIn * fadeOut;
-
-    // === APPROACH EFFECT ===
-    // Scale grows from distant to overwhelming - fills entire view
-    // Uses smoothstep for gradual acceleration, then exponential for drama
-    float approachProgress = smoothstep(0.0, 0.8, solidBlend);
-    // Exponential growth for dramatic approach - starts small, becomes massive
-    float scale = mix(0.15, 25.0, approachProgress * approachProgress);  // Quadratic for acceleration
-
-    // Color offset per solid (creates different hues)
-    float colorOffset = float(solidIndex) * 1.2;
-
-    // Rotation speed - slower for more contemplation
-    float rotTime = iTime * 0.3;
-
-    // === RAYMARCH LOOP (reference style: accumulate color) ===
+    // Raymarch loop (100 steps) - faithful to reference
     for (int i = 0; i < 100; i++) {
       // Sample point at current depth
       p = vec3(f, z);
 
-      // Rotation about Y-axis (reference style: mat2 with cos vec4 trick)
-      float c = cos(rotTime);
-      float s = sin(rotTime);
-      p.xz = mat2(c, -s, s, c) * p.xz;
+      // Rotation about Y-axis (reference: p.xz *= mat2(cos(iTime+vec4(0,33,11,0))))
+      float c1 = cos(rotTime);
+      float s1 = sin(rotTime);
+      float c2 = cos(rotTime + 33.0);
+      float s2 = sin(rotTime + 11.0);
+      p.xz = mat2(c1, s2, s1, c2) * p.xz;
 
-      // Secondary rotation for more interest
-      c = cos(rotTime * 0.7);
-      s = sin(rotTime * 0.7);
-      p.xy = mat2(c, -s, s, c) * p.xy;
-
-      // Get distance to current solid
-      // Apply scale: divide position by scale to make solid appear larger
+      // Apply scale - divide position to make object appear larger
       vec3 scaledP = p / scale;
 
-      if (solidIndex == 0) {
-        d = 0.1 + 0.2 * abs(sdTetrahedron(scaledP / 2.5) * 2.5 * scale);
-      } else if (solidIndex == 1) {
-        d = 0.1 + 0.2 * abs(sdCube(scaledP) * scale);
-      } else if (solidIndex == 2) {
-        // Octahedron - closest to reference shader
-        d = 0.1 + 0.2 * abs(sdOctahedron(scaledP) * scale);
-      } else if (solidIndex == 3) {
-        d = 0.1 + 0.2 * abs(sdDodecahedron(scaledP) * scale);
-      } else {
-        d = 0.1 + 0.2 * abs(sdIcosahedron(scaledP) * scale);
-      }
+      // Octahedron SDF (reference: max(abs(p.x)+abs(p.y),abs(p.z))-3.5)/1.732
+      float sdf = (max(abs(scaledP.x) + abs(scaledP.y), abs(scaledP.z)) - 3.5) / 1.732;
 
-      // Accumulate color (reference style: sin wave + attenuation by distance)
-      // The vec4(0,1,2,3) creates RGB phase offset for rainbow effect
-      o += (sin(p.y + z + colorOffset + vec4(0.0, 1.0, 2.0, 3.0)) + 1.0) / d;
+      // Step distance (reference: d = .1+.2*abs(sdf))
+      d = 0.1 + 0.2 * abs(sdf * scale);
+
+      // Accumulate color (reference: o += (sin(p.y+z+vec4(0,1,2,3))+1.)/d)
+      o += (sin(p.y + z + vec4(0.0, 1.0, 2.0, 3.0)) + 1.0) / d;
 
       // Advance depth
       z -= d;
 
-      // Early exit if too far (extended for massive scales)
-      if (z < -50.0) break;
+      // Early exit
+      if (z < -100.0) break;
     }
 
-    // Tanh tonemapping (reference style: tanh(o*o/1e5))
+    // Tanh tonemapping (reference: o=tanh(o*o/1e5))
     o = tanh(o * o / 1e5);
 
-    // Apply transition alpha
-    o *= solidAlpha;
-
-    // Intro brightness fade
-    float introBrightness = smoothstep(0.15, 0.5, introProgress);
-    o *= introBrightness;
+    // Intro fade
+    float fade = smoothstep(0.0, 0.1, iIntroProgress);
+    o *= fade;
 
     gl_FragColor = vec4(o.rgb, 1.0);
   }
@@ -189,21 +98,18 @@ export function PlatonicSolidsShader({ introProgress = 1 }: PlatonicSolidsShader
   const materialRef = useRef<THREE.ShaderMaterial>(null);
   const startTimeRef = useRef<number>(Date.now());
 
-  // Check if XR session is active and visible
   const visibilityState = useXRSessionVisibilityState();
 
   const uniforms = useMemo(
     () => ({
       iTime: { value: 0 },
       iIntroProgress: { value: introProgress },
-      iResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
     }),
     []
   );
 
   useFrame(() => {
     if (materialRef.current) {
-      // Only update time when visible in XR
       if (visibilityState !== 'visible-blurred') {
         const elapsed = (Date.now() - startTimeRef.current) / 1000;
         materialRef.current.uniforms.iTime.value = elapsed;
