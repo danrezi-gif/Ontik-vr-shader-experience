@@ -372,8 +372,19 @@ export function ShaderGallery({ onSelectShader }: ShaderGalleryProps) {
             lineHeight: '1.05',
             textShadow: '0 0 80px rgba(255, 255, 255, 0.1)',
           }}>
-            The Threshold
+            Ontik
           </h1>
+          <p style={{
+            color: 'rgba(255, 255, 255, 0.5)',
+            fontSize: '0.85rem',
+            fontWeight: '400',
+            letterSpacing: '0.15em',
+            textTransform: 'uppercase',
+            marginBottom: '20px',
+            fontFamily: '"Space Grotesk", system-ui, sans-serif',
+          }}>
+            VR Sanctuary
+          </p>
           <p style={{
             color: 'rgba(255, 255, 255, 0.35)',
             fontSize: '1.05rem',
