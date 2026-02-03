@@ -109,11 +109,11 @@ const fragmentShader = `
       gridVisibility *= postTransition;
     }
 
-    // Forward motion
+    // Forward motion - resets each phase so new grid appears around viewer
     float forwardMotion = 0.0;
     if (introComplete > 0.0) {
-      float accel = smoothstep(0.0, 15.0, journeyTime);
-      forwardMotion = journeyTime * 0.8 * accel;
+      float accel = smoothstep(0.0, 10.0, phaseTime);
+      forwardMotion = phaseTime * 0.8 * accel;
     }
 
     // === BEACON ===
@@ -193,6 +193,7 @@ const fragmentShader = `
       float maxDist = 60.0;
 
       for(int i = 0; i < 48; i++) {
+        // Motion offset - moves viewer forward through grid toward beacon
         vec3 motionOffset = vec3(0.0, 0.0, -forwardMotion);
         vec3 p = rd * t + motionOffset;
 
