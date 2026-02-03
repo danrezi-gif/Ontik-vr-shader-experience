@@ -33,14 +33,14 @@ const fragmentShader = `
   vec3 getBeaconColor(int phase) {
     if (phase == 0) return vec3(1.0, 0.15, 0.1);      // Red
     if (phase == 1) return vec3(0.1, 0.9, 0.4);       // Emerald
-    if (phase == 2) return vec3(0.15, 0.4, 1.0);      // Sapphire
+    if (phase == 2) return vec3(0.3, 0.9, 1.0);       // Cyan (neon)
     if (phase == 3) return vec3(1.0, 0.75, 0.2);      // Golden
     if (phase == 4) return vec3(0.7, 0.2, 0.9);       // Amethyst
     return vec3(1.0, 1.0, 0.95);                       // White
   }
 
   // Grid colors
-  vec3 getGridColor(int phase, float h) {
+  vec3 getGridColor(int phase, float h, float shellAngle, float time) {
     if (phase == 0) {
       vec3 coolBlue = vec3(0.7, 0.85, 1.0);
       vec3 warmAccent = vec3(1.0, 0.8, 0.5);
@@ -50,7 +50,13 @@ const fragmentShader = `
       return mix(vec3(1.0, 0.2, 0.15), vec3(1.0, 0.5, 0.2), h);
     }
     if (phase == 2) {
-      return mix(vec3(0.1, 0.85, 0.4), vec3(0.2, 1.0, 0.7), h);
+      // Neon ring palette - cyan to magenta with angle-based variation
+      float angleMix = sin(shellAngle * 2.0 + time * 0.3) * 0.5 + 0.5;
+      vec3 cyan = vec3(0.1, 0.9, 1.0);
+      vec3 magenta = vec3(1.0, 0.2, 0.8);
+      vec3 blue = vec3(0.2, 0.4, 1.0);
+      vec3 baseColor = mix(cyan, magenta, angleMix);
+      return mix(baseColor, blue, h * 0.4);
     }
     if (phase == 3) {
       return mix(vec3(0.15, 0.35, 1.0), vec3(0.3, 0.7, 1.0), h);
@@ -200,6 +206,7 @@ const fragmentShader = `
         vec3 cellId;
         float d;
         float h;
+        float shellAngle = 0.0;
 
         // === GEOMETRY PER PHASE ===
         if (currentPhase == 0) {
@@ -222,15 +229,18 @@ const fragmentShader = `
           h = hash(cellId);
         }
         else if (currentPhase == 2) {
-          // SPHERICAL SHELLS
+          // SPHERICAL SHELLS - neon ring style
           float radius = length(p);
           float shellId = floor(radius / spacing);
           float shellQ = mod(radius, spacing) - spacing * 0.5;
           float theta = atan(p.z, p.x);
           float phi = asin(clamp(p.y / max(radius, 0.01), -1.0, 1.0));
-          cellId = vec3(shellId, floor(theta * 2.0), floor(phi * 3.0));
-          d = abs(shellQ) * 0.8;
+          cellId = vec3(shellId, floor(theta * 3.0), floor(phi * 4.0));
+          // Tighter ring effect
+          d = abs(shellQ) * 0.6;
           h = hash(cellId);
+          // Store angle for color cycling
+          shellAngle = theta + phi * 2.0;
         }
         else if (currentPhase == 3) {
           // VERTICAL PILLARS
@@ -280,6 +290,13 @@ const fragmentShader = `
         float glow = lightSize / (d + 0.02);
         float light = core + glow * glow * 0.4;
 
+        // Enhanced neon glow for phase 2
+        if (currentPhase == 2) {
+          float neonGlow = exp(-d * d * 8.0) * 2.0;
+          float pulse = sin(iTime * 1.5 + shellAngle) * 0.3 + 1.0;
+          light = (core * 1.5 + glow * glow * 0.6 + neonGlow) * pulse;
+        }
+
         light *= (0.7 + h3 * 0.5) / (1.0 + t * 0.025);
 
         // Visibility
@@ -288,7 +305,7 @@ const fragmentShader = `
         light *= reveal * gridVisibility * introComplete;
 
         // Color
-        vec3 lightColor = getGridColor(currentPhase, h2);
+        vec3 lightColor = getGridColor(currentPhase, h2, shellAngle, iTime);
 
         // Tint toward beacon near horizon
         float forwardness = smoothstep(0.2, -0.6, rd.z);
