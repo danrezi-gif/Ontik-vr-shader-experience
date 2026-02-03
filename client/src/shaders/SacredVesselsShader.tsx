@@ -53,13 +53,6 @@ const fragmentShader = `
     return f / 0.9375;
   }
 
-  // Sparkle function
-  float sparkle(vec2 p, float t) {
-    float s = hash2(floor(p * 50.0));
-    float phase = s * 6.28 + t * (2.0 + s * 3.0);
-    float brightness = pow(sin(phase) * 0.5 + 0.5, 8.0);
-    return brightness * step(0.97, s);
-  }
 
   void main() {
     vec3 rd = normalize(vWorldPosition);
@@ -135,10 +128,6 @@ const fragmentShader = `
         particles += (particle * 0.5 + streak * 0.3 + ripple * 0.2) / (1.0 + j * 0.4);
       }
 
-      // Sparkles - scattered bright points
-      float sparkles = sparkle(vec2(uv.x + i, ascentY), iTime);
-      particles += sparkles * 2.0;
-
       // Central glow
       float centerGlow = exp(-dx * dx * 600.0) * 2.0;
 
@@ -190,59 +179,109 @@ const fragmentShader = `
     }
     col += vec3(0.8, 0.9, 1.0) * rays;
 
-    // === VERTICAL SEAM COVERAGE - STRONGER ===
+    // === VERTICAL SEAM COVERAGE - LUMINOUS GLOW COLUMN ===
+    // The seam is at theta = ±π, mapping to uv.x = ±1.0
     float seamDist = min(abs(uv.x - 1.0), abs(uv.x + 1.0));
-    float seamFog = smoothstep(0.25, 0.0, seamDist); // Wider coverage
-    vec3 seamFogColor = vec3(0.01, 0.02, 0.04);
-    col = mix(col, seamFogColor, seamFog * 0.95); // Stronger blend
 
-    // === GOLDEN PHASES ===
+    // Create a glowing column at the seam (like the other stream columns)
+    float seamColumnWidth = 0.12;
+    float seamMask = smoothstep(seamColumnWidth, 0.0, seamDist);
+
+    // Add flowing particles to match other columns
+    float seamParticles = 0.0;
+    for(float j = 0.0; j < 3.0; j++) {
+      float scale = 6.0 + j * 3.0;
+      float speed = t * (1.2 + j * 0.4);
+      vec2 seamParticleUV = vec2(seamDist * scale * 20.0, ascentY * scale * 2.0 - speed);
+      float n = noise(seamParticleUV);
+      seamParticles += smoothstep(0.5, 0.75, n) / (1.0 + j * 0.4);
+    }
+
+    // Central glow for seam
+    float seamGlow = exp(-seamDist * seamDist * 400.0) * 2.5;
+    float seamIntensity = seamMask * seamParticles * 0.5 + seamGlow;
+
+    // Vertical gradient for seam
+    float seamVerticalGrad = smoothstep(-1.0, 0.3, uv.y);
+    seamIntensity *= seamVerticalGrad;
+
+    // Same ethereal blue-white as other streams
+    vec3 seamColor = vec3(0.6, 0.8, 1.0);
+    vec3 seamCore = vec3(1.0, 1.0, 1.0);
+    float seamCoreMix = exp(-seamDist * seamDist * 1000.0);
+    vec3 finalSeamColor = mix(seamColor, seamCore, seamCoreMix);
+
+    col += finalSeamColor * seamIntensity * 0.5;
+
+    // === GOLDEN PHASES WITH PROGRESSIVE FOG ===
     float phase1Start = 143.0;
     float phase1End = 173.0;
     float phase2Start = 183.0;
     float phase2End = 210.0;
-    float phase3Start = 220.0; // Cathedral effect
+    float phase3Start = 220.0;
+    float phase4Start = 260.0; // Final white-out immersion
 
-    float timeSinceTrigger = iAudioTime - phase1Start;
+    // Calculate overall phase progress for saturation/glow intensification
+    float overallProgress = 0.0;
+    if (iAudioTime > phase1Start) {
+      overallProgress = smoothstep(phase1Start, phase4Start + 30.0, iAudioTime);
+    }
 
-    // Phase 1: First golden emergence (143s - 173s)
+    // Progressive fog expansion - starts 0, grows with phases
+    float fogExpansion = 0.0;
+    if (iAudioTime > phase1Start) {
+      fogExpansion = smoothstep(0.0, 30.0, iAudioTime - phase1Start) * 0.3; // Phase 1: top only
+    }
+    if (iAudioTime > phase2Start) {
+      fogExpansion += smoothstep(0.0, 20.0, iAudioTime - phase2Start) * 0.3; // Phase 2: mid
+    }
+    if (iAudioTime > phase3Start) {
+      fogExpansion += smoothstep(0.0, 30.0, iAudioTime - phase3Start) * 0.4; // Phase 3: full envelope
+    }
+
+    // Phase 1: First golden emergence (143s - 173s) with descending fog
     if (iAudioTime > phase1Start && iAudioTime < phase1End) {
       float fadeIn = smoothstep(0.0, 8.0, iAudioTime - phase1Start);
       float fadeOut = 1.0 - smoothstep(phase1End - 8.0, phase1End, iAudioTime);
       float presenceIntensity = fadeIn * fadeOut;
 
-      float goldenY = smoothstep(-0.5, 0.8, uv.y);
-      float goldenCenter = exp(-length(vec2(uv.x * 0.5, uv.y - 0.3)) * 1.5);
+      // Golden fog descending from above - 360 degree coverage
+      float fogHeight = mix(0.9, 0.4, smoothstep(0.0, 25.0, iAudioTime - phase1Start));
+      float goldenFog = smoothstep(fogHeight - 0.3, fogHeight + 0.2, uv.y) * presenceIntensity;
+
+      // Add golden center glow
+      float goldenCenter = exp(-length(vec2(uv.x * 0.5, uv.y - 0.5)) * 1.2);
       float wave = sin(length(vec2(uv.x, uv.y)) * 8.0 - iTime * 2.0) * 0.5 + 0.5;
       float breath = sin(iTime * 0.8) * 0.3 + 0.7;
 
-      float goldenAmount = (goldenY * 0.5 + goldenCenter * 0.8 + wave * 0.2) * presenceIntensity * breath;
+      float goldenAmount = (goldenFog + goldenCenter * 0.6 + wave * 0.15) * presenceIntensity * breath;
 
       vec3 goldenColor = vec3(1.0, 0.85, 0.4);
       vec3 whiteCore = vec3(1.0, 0.98, 0.9);
       vec3 divineGold = mix(goldenColor, whiteCore, goldenCenter * presenceIntensity);
 
-      col += divineGold * goldenAmount * 2.0;
+      col += divineGold * goldenAmount * 2.2;
       col = mix(col, col * vec3(1.2, 1.1, 0.8), presenceIntensity * 0.5);
     }
 
-    // Phase 2: Second golden emergence with rays and lens flare (183s - 210s)
+    // Phase 2: Second golden emergence with 360 degree rays (183s - 210s)
     if (iAudioTime > phase2Start && iAudioTime < phase2End) {
       float fadeIn = smoothstep(0.0, 6.0, iAudioTime - phase2Start);
       float fadeOut = 1.0 - smoothstep(phase2End - 6.0, phase2End, iAudioTime);
       float intensity2 = fadeIn * fadeOut;
 
-      // Strong golden light from above
-      float topGlow = smoothstep(0.3, 1.0, uv.y) * intensity2;
+      // Golden fog now at mid-height, surrounding user
+      float midFog = smoothstep(-0.2, 0.6, uv.y) * smoothstep(1.0, 0.3, uv.y);
+      col += vec3(1.0, 0.9, 0.6) * midFog * intensity2 * 0.4;
 
-      // Golden rays from top
+      // 360 degree golden rays using theta
       float goldenRays = 0.0;
-      for(float r = 0.0; r < 8.0; r++) {
-        float rayAngle = r * 0.785 + iTime * 0.1; // 8 rays, slowly rotating
-        float rayX = sin(rayAngle) * (0.1 + 0.2 * (1.0 - uv.y));
-        float rayDist = abs(uv.x - rayX);
-        float ray = exp(-rayDist * rayDist * 150.0) * smoothstep(0.2, 0.9, uv.y);
-        goldenRays += ray;
+      for(float r = 0.0; r < 12.0; r++) {
+        float rayAngle = r * 0.524 + iTime * 0.08; // 12 rays around full circle
+        float rayTheta = theta - rayAngle;
+        float rayDist = abs(sin(rayTheta));
+        float ray = exp(-rayDist * rayDist * 80.0) * smoothstep(0.0, 0.8, uv.y);
+        goldenRays += ray * 0.15;
       }
 
       // Lens flare at top center
@@ -252,70 +291,124 @@ const fragmentShader = `
       float flareRing2 = exp(-abs(flareDist - 0.2) * 20.0) * 0.3;
       float lensFlare = flareCore + flareRing + flareRing2;
 
-      // Striking golden color
       vec3 intenseGold = vec3(1.0, 0.9, 0.5);
       vec3 pureWhite = vec3(1.0, 1.0, 0.95);
 
-      col += intenseGold * topGlow * 1.5;
-      col += intenseGold * goldenRays * intensity2 * 0.8;
+      col += intenseGold * goldenRays * intensity2;
       col += mix(intenseGold, pureWhite, 0.7) * lensFlare * intensity2 * 2.5;
 
       // Tint scene golden
       col = mix(col, col * vec3(1.3, 1.15, 0.85), intensity2 * 0.6);
     }
 
-    // Phase 3: Cathedral stained glass effect (220s+)
+    // Phase 3: Cathedral stained glass - 360 DEGREES (220s+)
     if (iAudioTime > phase3Start) {
-      float fadeIn = smoothstep(0.0, 10.0, iAudioTime - phase3Start);
+      float fadeIn = smoothstep(0.0, 15.0, iAudioTime - phase3Start);
 
-      // Colored light rays bouncing - stained glass effect
+      // Fog envelope increasing - surrounding user
+      float envelopeFog = smoothstep(-0.5, 0.8, uv.y) * fadeIn * 0.3;
+      col += vec3(0.9, 0.85, 0.95) * envelopeFog;
+
+      // 360 degree colored rays using theta (the raw spherical angle)
       vec3 vitralCol = vec3(0.0);
 
-      for(float v = 0.0; v < 6.0; v++) {
-        float angle = v * 1.047 + iTime * 0.05; // 6 colored rays
-        float rayX = sin(angle + uv.y * 0.5) * 0.3;
-        float rayDist = abs(uv.x - rayX);
-        float ray = exp(-rayDist * rayDist * 50.0);
+      for(float v = 0.0; v < 12.0; v++) {
+        float rayBaseAngle = v * 0.524; // 12 rays evenly spaced around 360
+        float rayAngle = rayBaseAngle + iTime * 0.03;
 
-        // Different colors for each ray - cathedral glass colors
+        // Use theta for true 360 degree positioning
+        float rayTheta = theta - rayAngle;
+        float rayDist = abs(sin(rayTheta * 0.5)); // Wraps properly
+        float ray = exp(-rayDist * rayDist * 30.0);
+
+        // Vertical variation
+        ray *= smoothstep(-0.3, 0.9, uv.y);
+
+        // Cathedral glass colors - cycle through
         vec3 rayColor;
-        if (v < 1.0) rayColor = vec3(0.9, 0.2, 0.3); // Ruby
-        else if (v < 2.0) rayColor = vec3(0.2, 0.4, 0.9); // Sapphire
-        else if (v < 3.0) rayColor = vec3(0.9, 0.8, 0.2); // Gold
-        else if (v < 4.0) rayColor = vec3(0.2, 0.8, 0.4); // Emerald
-        else if (v < 5.0) rayColor = vec3(0.7, 0.3, 0.8); // Amethyst
-        else rayColor = vec3(0.9, 0.5, 0.2); // Amber
+        float colorIdx = mod(v, 6.0);
+        if (colorIdx < 1.0) rayColor = vec3(0.9, 0.2, 0.3); // Ruby
+        else if (colorIdx < 2.0) rayColor = vec3(0.2, 0.4, 0.9); // Sapphire
+        else if (colorIdx < 3.0) rayColor = vec3(0.95, 0.85, 0.2); // Gold
+        else if (colorIdx < 4.0) rayColor = vec3(0.2, 0.85, 0.4); // Emerald
+        else if (colorIdx < 5.0) rayColor = vec3(0.75, 0.3, 0.85); // Amethyst
+        else rayColor = vec3(0.95, 0.55, 0.2); // Amber
 
         // Add shimmer
-        float shimmer = sin(uv.y * 20.0 + iTime * 2.0 + v * 2.0) * 0.3 + 0.7;
+        float shimmer = sin(uv.y * 15.0 + iTime * 1.5 + v * 1.5) * 0.25 + 0.75;
 
-        vitralCol += rayColor * ray * shimmer;
+        vitralCol += rayColor * ray * shimmer * 0.18;
       }
 
-      // Blend cathedral effect
-      col = mix(col, col + vitralCol * 0.6, fadeIn);
+      // Blend cathedral effect - intensify saturation with progress
+      float saturationBoost = 1.0 + fadeIn * 0.5;
+      vitralCol *= saturationBoost;
+      col = mix(col, col + vitralCol, fadeIn);
 
-      // Add colored ambient from walls
-      vec3 wallGlow = vec3(0.3, 0.2, 0.4) * (1.0 - abs(uv.x)) * 0.3;
-      col += wallGlow * fadeIn;
+      // 360 degree ambient glow from all around
+      vec3 ambientGlow = vec3(0.4, 0.3, 0.5) * 0.25;
+      col += ambientGlow * fadeIn;
     }
+
+    // Phase 4: Final white-out immersion (260s+)
+    if (iAudioTime > phase4Start) {
+      float whiteOutProgress = smoothstep(0.0, 40.0, iAudioTime - phase4Start);
+
+      // Progressive white fog envelope from all directions
+      float whiteFog = whiteOutProgress;
+
+      // Add final colored light bursts before white-out
+      vec3 finalColors = vec3(0.0);
+      for(float f = 0.0; f < 8.0; f++) {
+        float burstAngle = f * 0.785 + iTime * 0.1;
+        float burstTheta = theta - burstAngle;
+        float burstDist = abs(sin(burstTheta * 0.5));
+        float burst = exp(-burstDist * burstDist * 20.0) * (1.0 - whiteOutProgress);
+
+        vec3 burstColor = vec3(
+          0.8 + 0.2 * sin(f * 1.0),
+          0.7 + 0.3 * sin(f * 1.5 + 1.0),
+          0.9 + 0.1 * sin(f * 2.0 + 2.0)
+        );
+        finalColors += burstColor * burst * 0.2;
+      }
+      col += finalColors;
+
+      // Intensify saturation before final white
+      col = mix(col, col * 1.4, (1.0 - whiteOutProgress) * 0.3);
+
+      // Final white immersion
+      vec3 divineWhite = vec3(1.0, 0.98, 0.96);
+      col = mix(col, divineWhite, whiteFog * whiteFog); // Quadratic for dramatic end
+    }
+
+    // Progressive saturation and glow intensification throughout phases
+    float glowBoost = 1.0 + overallProgress * 0.6;
+    col *= glowBoost;
 
     // Breathing/pulsing
     float breath = sin(iTime * 0.3) * 0.5 + 0.5;
     col *= 0.9 + breath * 0.1;
 
-    // === POLE EFFECTS - FOG FROM OUTSET ===
-    // Inferior pole - always present
+    // === POLE EFFECTS - MINIMAL AT START, EXPANDS WITH PHASES ===
+    // Inferior pole - always dark
     float inferiorPole = smoothstep(-0.1, -0.7, rd.y);
     col = mix(col, vec3(0.0), inferiorPole);
-    col += vec3(0.01, 0.015, 0.03) * inferiorPole;
+    col += vec3(0.005, 0.008, 0.015) * inferiorPole;
 
-    // Superior pole - WHITE FOG FROM OUTSET (not dependent on intro)
-    float superiorPole = smoothstep(0.6, 0.95, rd.y); // Starts earlier
-    vec3 divineFog = vec3(0.9, 0.92, 0.98); // Bright white fog
-    col = mix(col, divineFog, superiorPole * 0.8); // Strong blend to hide seam
-    float poleCore = smoothstep(0.88, 1.0, rd.y);
-    col = mix(col, vec3(1.0), poleCore * 0.9); // Pure white at very top
+    // Superior pole - MINIMAL fog at start (just cover seam), expands with phases
+    float basePoleSize = 0.95; // Very tight - just the seam
+    float expandedPoleSize = mix(basePoleSize, 0.5, fogExpansion); // Expands down to 0.5
+
+    float superiorPole = smoothstep(expandedPoleSize, 0.98, rd.y);
+
+    // Fog color shifts from subtle to bright white with phases
+    vec3 poleFogColor = mix(vec3(0.1, 0.12, 0.15), vec3(0.95, 0.95, 0.98), fogExpansion);
+    col = mix(col, poleFogColor, superiorPole * (0.3 + fogExpansion * 0.7));
+
+    // Very top always has subtle coverage for seam
+    float poleCore = smoothstep(0.96, 1.0, rd.y);
+    col = mix(col, vec3(0.6, 0.65, 0.7), poleCore * 0.6);
 
     // Apply brightness and intro
     col *= iBrightness * iIntroProgress;
