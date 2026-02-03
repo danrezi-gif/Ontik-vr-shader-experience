@@ -111,10 +111,11 @@ const fragmentShader = `
     float solidAlpha = introProgress < 1.0 ? fadeIn : fadeIn * fadeOut;
 
     // === APPROACH EFFECT ===
-    // Scale grows from small (0.3) to enormous (3.0) as we "approach" the solid
-    // Uses smoothstep for gradual acceleration
-    float approachProgress = smoothstep(0.0, 0.85, solidBlend);
-    float scale = mix(0.4, 4.0, approachProgress);  // Start small, grow huge
+    // Scale grows from distant to overwhelming - fills entire view
+    // Uses smoothstep for gradual acceleration, then exponential for drama
+    float approachProgress = smoothstep(0.0, 0.8, solidBlend);
+    // Exponential growth for dramatic approach - starts small, becomes massive
+    float scale = mix(0.15, 25.0, approachProgress * approachProgress);  // Quadratic for acceleration
 
     // Color offset per solid (creates different hues)
     float colorOffset = float(solidIndex) * 1.2;
@@ -161,8 +162,8 @@ const fragmentShader = `
       // Advance depth
       z -= d;
 
-      // Early exit if too far
-      if (z < -10.0) break;
+      // Early exit if too far (extended for massive scales)
+      if (z < -50.0) break;
     }
 
     // Tanh tonemapping (reference style: tanh(o*o/1e5))
