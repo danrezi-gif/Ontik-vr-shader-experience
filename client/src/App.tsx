@@ -1,15 +1,12 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Suspense, useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { XR, createXRStore, XROrigin } from "@react-three/xr";
-import { VRShaderScene } from "./components/VRShaderScene";
 import { ShaderGallery } from "./components/ShaderGallery";
 import { AbstractWavesShader } from "./shaders/AbstractWavesShader";
-import { SunsetCloudsShader } from "./shaders/SunsetCloudsShader";
 import { TunnelLightsShader } from "./shaders/TunnelLightsShader";
 import { InfiniteLightShader } from "./shaders/InfiniteLightShader";
 import { SacredVesselsShader } from "./shaders/SacredVesselsShader";
 import { PlatonicSolidsShader } from "./shaders/PlatonicSolidsShader";
-import { useAudioAnalyzer } from "./hooks/useAudioAnalyzer";
 import { SHADERS } from "./shaders";
 import "@fontsource/inter";
 import * as THREE from "three";
@@ -19,7 +16,6 @@ const store = createXRStore();
 // Shader component mapping
 interface ShaderRendererProps {
   shaderId: string;
-  audioData: any;
   speed: number;
   pulse: number;
   brightness: number;
@@ -30,10 +26,8 @@ interface ShaderRendererProps {
   audioTime: number;
 }
 
-function ShaderRenderer({ shaderId, audioData, speed, pulse, brightness, colorShift, zoom, headRotationY, introProgress, audioTime }: ShaderRendererProps) {
+function ShaderRenderer({ shaderId, speed, pulse, brightness, colorShift, zoom, headRotationY, introProgress, audioTime }: ShaderRendererProps) {
   switch (shaderId) {
-    case 'audio-reactive':
-      return <VRShaderScene audioData={audioData} paletteIndex={0} />;
     case 'abstract-waves':
       return <AbstractWavesShader speed={speed} brightness={brightness} colorShift={colorShift} zoom={zoom} pulse={pulse} headRotationY={headRotationY} introProgress={introProgress} />;
     case 'tunnel-lights':
@@ -42,12 +36,10 @@ function ShaderRenderer({ shaderId, audioData, speed, pulse, brightness, colorSh
       return <InfiniteLightShader speed={speed} brightness={brightness} colorShift={colorShift} zoom={zoom} pulse={pulse} headRotationY={headRotationY} introProgress={introProgress} />;
     case 'sacred-vessels':
       return <SacredVesselsShader speed={speed} brightness={brightness} colorShift={colorShift} headRotationY={headRotationY} introProgress={introProgress} audioTime={audioTime} />;
-    case 'sunset-clouds':
-      return <SunsetCloudsShader speed={speed} />;
     case 'platonic-solids':
       return <PlatonicSolidsShader introProgress={introProgress} />;
     default:
-      return <VRShaderScene audioData={audioData} paletteIndex={0} />;
+      return <AbstractWavesShader speed={speed} brightness={brightness} colorShift={colorShift} zoom={zoom} pulse={pulse} headRotationY={headRotationY} introProgress={introProgress} />;
   }
 }
 
@@ -714,7 +706,6 @@ function App() {
   const [colorShift, setColorShift] = useState(0.0);
   const [zoom, setZoom] = useState(0.0);
   const [audioTime, setAudioTime] = useState(0);
-  const { audioData, toggleListening } = useAudioAnalyzer();
 
   // Calculate effective brightness (intro affects it for abstract-waves and tunnel-lights)
   const hasIntro = selectedShader === 'abstract-waves' || selectedShader === 'tunnel-lights' || selectedShader === 'infinite-light' || selectedShader === 'sacred-vessels' || selectedShader === 'platonic-solids';
@@ -772,12 +763,7 @@ function App() {
   const handleSelectShader = useCallback((shaderId: string) => {
     setSelectedShader(shaderId);
     setMusicStarted(true);
-
-    // Start audio for audio-reactive shader
-    if (shaderId === 'audio-reactive') {
-      toggleListening();
-    }
-  }, [toggleListening]);
+  }, []);
 
   const handleBack = useCallback(() => {
     // Exit VR if in VR mode
@@ -850,7 +836,6 @@ function App() {
             />
             <ShaderRenderer
               shaderId={selectedShader}
-              audioData={audioData}
               speed={speed}
               pulse={pulse}
               brightness={brightness}
