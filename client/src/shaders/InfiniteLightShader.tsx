@@ -46,6 +46,7 @@ const fragmentShader = `
     col += centralColor * centralGlow * 1.5;
 
     // === FORWARD MOVEMENT after intro completes ===
+    // Movement toward NEGATIVE Z (front of user)
     float forwardMotion = 0.0;
     float motionPhase = 0.0;
     if (iIntroProgress >= 0.95) {
@@ -58,15 +59,15 @@ const fragmentShader = `
     }
 
     // === RED HORIZON BEACON ===
-    // Vertical light pillar at the forward horizon (rd.z > 0)
+    // Vertical light pillar at the FRONT horizon (rd.z < 0, negative Z is front)
     float horizonBeaconIntensity = 0.0;
     if (motionPhase > 0.0) {
       // Distance from forward axis (z-axis)
       float beaconDistX = abs(rd.x);
       float beaconDistY = abs(rd.y);
 
-      // Only visible when looking forward
-      float forwardFacing = smoothstep(-0.1, 0.4, rd.z);
+      // Only visible when looking FORWARD (negative Z)
+      float forwardFacing = smoothstep(0.1, -0.4, rd.z);
 
       // Vertical beam - tall and narrow
       float beamWidth = exp(-beaconDistX * beaconDistX * 25.0);
@@ -104,8 +105,8 @@ const fragmentShader = `
       float maxRevealDist = 3.0 + multiplyPhase * 57.0; // 3 -> 60
 
       for(int i = 0; i < 48; i++) {
-        // Apply forward motion offset to create movement through grid
-        vec3 motionOffset = vec3(0.0, 0.0, forwardMotion);
+        // Apply forward motion offset - NEGATIVE Z direction (toward front)
+        vec3 motionOffset = vec3(0.0, 0.0, -forwardMotion);
         vec3 p = rd * t + motionOffset;
 
         vec3 cellId = floor(p / spacing);
@@ -143,9 +144,9 @@ const fragmentShader = `
         lightColor = mix(lightColor, vec3(0.6, 1.0, 0.85), smoothstep(0.4, 0.5, h2) * (1.0 - smoothstep(0.5, 0.6, h2)));
 
         // === RED SHIFT near horizon ===
-        // Lights in front (positive z direction) shift toward red
+        // Lights in front (NEGATIVE z direction) shift toward red
         if (motionPhase > 0.0) {
-          float forwardness = smoothstep(-0.2, 0.6, rd.z);
+          float forwardness = smoothstep(0.2, -0.6, rd.z); // Negative Z is front
           float horizonProximity = smoothstep(0.4, 0.0, abs(rd.y)); // Near horizontal plane
           float redShiftAmount = forwardness * horizonProximity * motionPhase * 0.6;
 
