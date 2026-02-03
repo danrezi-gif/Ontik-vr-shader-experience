@@ -179,6 +179,37 @@ const fragmentShader = `
     }
     col += vec3(0.8, 0.9, 1.0) * rays;
 
+    // === SHINING STAR APEX - HIDE TOP POLE ===
+    // Radiant star at the apex where streams converge
+    float apexDist = 1.0 - rd.y; // Distance from top pole (rd.y = 1.0)
+
+    // Core: intense bright point
+    float starCore = exp(-apexDist * apexDist * 800.0) * 3.0;
+
+    // Halo: soft gradient around core
+    float starHalo = exp(-apexDist * apexDist * 40.0) * 1.2;
+
+    // Rays emanating from apex
+    float starRays = 0.0;
+    for(float sr = 0.0; sr < 8.0; sr++) {
+      float starRayAngle = sr * 0.785 + iTime * 0.05; // 8 rays, slowly rotating
+      float starRayTheta = theta - starRayAngle;
+      float starRayDist = abs(sin(starRayTheta * 4.0)); // More rays
+      float starRay = exp(-starRayDist * starRayDist * 15.0);
+      starRay *= exp(-apexDist * 8.0); // Fade with distance from apex
+      starRays += starRay * 0.12;
+    }
+
+    // Pulsing breath for the star
+    float starBreath = sin(iTime * 0.5) * 0.15 + 0.85;
+
+    // Combine star elements
+    float starIntensity = (starCore + starHalo + starRays) * starBreath;
+
+    // Star color - bright white with slight warmth
+    vec3 starColor = vec3(1.0, 0.98, 0.95);
+    col += starColor * starIntensity;
+
     // === VERTICAL SEAM COVERAGE - LUMINOUS GLOW COLUMN ===
     // The seam is at theta = ±π, mapping to uv.x = ±1.0
     float seamDist = min(abs(uv.x - 1.0), abs(uv.x + 1.0));
@@ -264,122 +295,165 @@ const fragmentShader = `
       col = mix(col, col * vec3(1.2, 1.1, 0.8), presenceIntensity * 0.5);
     }
 
-    // Phase 2: Second golden emergence with 360 degree rays (183s - 210s)
+    // Phase 2: Second golden emergence with 360 degree rays + color hints (183s - 210s)
     if (iAudioTime > phase2Start && iAudioTime < phase2End) {
       float fadeIn = smoothstep(0.0, 6.0, iAudioTime - phase2Start);
       float fadeOut = 1.0 - smoothstep(phase2End - 6.0, phase2End, iAudioTime);
       float intensity2 = fadeIn * fadeOut;
 
-      // Golden fog now at mid-height, surrounding user
-      float midFog = smoothstep(-0.2, 0.6, uv.y) * smoothstep(1.0, 0.3, uv.y);
-      col += vec3(1.0, 0.9, 0.6) * midFog * intensity2 * 0.4;
+      // Golden fog now at mid-height, surrounding user - MORE INTENSE
+      float midFog = smoothstep(-0.3, 0.7, uv.y) * smoothstep(1.0, 0.2, uv.y);
+      vec3 goldenMidFog = vec3(1.0, 0.88, 0.55) * midFog * intensity2 * 0.5;
+
+      // Add subtle color hints in the golden fog
+      float colorHint = sin(theta * 3.0 + iTime * 0.2) * 0.5 + 0.5;
+      vec3 hintColor = mix(vec3(1.0, 0.7, 0.5), vec3(0.9, 0.8, 1.0), colorHint);
+      goldenMidFog = mix(goldenMidFog, goldenMidFog * hintColor, 0.3);
+
+      col += goldenMidFog;
 
       // 360 degree golden rays using theta
       float goldenRays = 0.0;
       for(float r = 0.0; r < 12.0; r++) {
-        float rayAngle = r * 0.524 + iTime * 0.08; // 12 rays around full circle
+        float rayAngle = r * 0.524 + iTime * 0.08;
         float rayTheta = theta - rayAngle;
         float rayDist = abs(sin(rayTheta));
-        float ray = exp(-rayDist * rayDist * 80.0) * smoothstep(0.0, 0.8, uv.y);
-        goldenRays += ray * 0.15;
+        float ray = exp(-rayDist * rayDist * 70.0) * smoothstep(-0.1, 0.8, uv.y);
+        goldenRays += ray * 0.18;
       }
 
-      // Lens flare at top center
+      // Lens flare at top center - enhanced
       float flareDist = length(vec2(uv.x, uv.y - 0.85));
-      float flareCore = exp(-flareDist * flareDist * 80.0);
-      float flareRing = exp(-abs(flareDist - 0.1) * 30.0) * 0.5;
-      float flareRing2 = exp(-abs(flareDist - 0.2) * 20.0) * 0.3;
+      float flareCore = exp(-flareDist * flareDist * 70.0);
+      float flareRing = exp(-abs(flareDist - 0.1) * 25.0) * 0.6;
+      float flareRing2 = exp(-abs(flareDist - 0.2) * 18.0) * 0.4;
       float lensFlare = flareCore + flareRing + flareRing2;
 
-      vec3 intenseGold = vec3(1.0, 0.9, 0.5);
+      vec3 intenseGold = vec3(1.0, 0.88, 0.45);
       vec3 pureWhite = vec3(1.0, 1.0, 0.95);
 
       col += intenseGold * goldenRays * intensity2;
-      col += mix(intenseGold, pureWhite, 0.7) * lensFlare * intensity2 * 2.5;
+      col += mix(intenseGold, pureWhite, 0.7) * lensFlare * intensity2 * 2.8;
 
-      // Tint scene golden
-      col = mix(col, col * vec3(1.3, 1.15, 0.85), intensity2 * 0.6);
+      // Tint scene golden - stronger
+      col = mix(col, col * vec3(1.35, 1.15, 0.8), intensity2 * 0.65);
     }
 
-    // Phase 3: Cathedral stained glass - 360 DEGREES (220s+)
+    // Phase 3: Cathedral stained glass - 360 DEGREES with INTENSE COLORED FOG (220s+)
     if (iAudioTime > phase3Start) {
       float fadeIn = smoothstep(0.0, 15.0, iAudioTime - phase3Start);
+      float deepFadeIn = smoothstep(0.0, 30.0, iAudioTime - phase3Start); // Slower for fog intensity
 
-      // Fog envelope increasing - surrounding user
-      float envelopeFog = smoothstep(-0.5, 0.8, uv.y) * fadeIn * 0.3;
-      col += vec3(0.9, 0.85, 0.95) * envelopeFog;
+      // === GOLDEN + COLORED FOG ENVELOPE ===
+      // Base golden fog that fills the space
+      float goldenFogMask = smoothstep(-0.6, 0.7, uv.y) * deepFadeIn;
+      vec3 goldenFogBase = vec3(1.0, 0.88, 0.55) * goldenFogMask * 0.4;
 
-      // 360 degree colored rays using theta (the raw spherical angle)
+      // Add swirling colored fog on top of golden
+      vec3 coloredFog = vec3(0.0);
+      for(float cf = 0.0; cf < 6.0; cf++) {
+        float fogAngle = cf * 1.047 + iTime * 0.02;
+        float fogTheta = theta - fogAngle;
+        float fogWave = sin(fogTheta * 2.0 + uv.y * 3.0 + iTime * 0.3) * 0.5 + 0.5;
+
+        vec3 fogColor;
+        if (cf < 1.0) fogColor = vec3(0.95, 0.3, 0.4); // Ruby fog
+        else if (cf < 2.0) fogColor = vec3(0.3, 0.5, 0.95); // Sapphire fog
+        else if (cf < 3.0) fogColor = vec3(0.95, 0.85, 0.3); // Gold fog
+        else if (cf < 4.0) fogColor = vec3(0.3, 0.9, 0.5); // Emerald fog
+        else if (cf < 5.0) fogColor = vec3(0.8, 0.4, 0.9); // Amethyst fog
+        else fogColor = vec3(0.95, 0.6, 0.3); // Amber fog
+
+        coloredFog += fogColor * fogWave * 0.12 * deepFadeIn;
+      }
+
+      // Combine golden base with colored swirls
+      col += goldenFogBase + coloredFog;
+
+      // === 360 DEGREE COLORED RAYS - MORE INTENSE ===
       vec3 vitralCol = vec3(0.0);
 
       for(float v = 0.0; v < 12.0; v++) {
-        float rayBaseAngle = v * 0.524; // 12 rays evenly spaced around 360
+        float rayBaseAngle = v * 0.524;
         float rayAngle = rayBaseAngle + iTime * 0.03;
 
-        // Use theta for true 360 degree positioning
         float rayTheta = theta - rayAngle;
-        float rayDist = abs(sin(rayTheta * 0.5)); // Wraps properly
-        float ray = exp(-rayDist * rayDist * 30.0);
+        float rayDist = abs(sin(rayTheta * 0.5));
+        float ray = exp(-rayDist * rayDist * 25.0); // Wider rays
 
-        // Vertical variation
-        ray *= smoothstep(-0.3, 0.9, uv.y);
+        ray *= smoothstep(-0.4, 0.85, uv.y);
 
-        // Cathedral glass colors - cycle through
+        // Cathedral glass colors - MORE SATURATED
         vec3 rayColor;
         float colorIdx = mod(v, 6.0);
-        if (colorIdx < 1.0) rayColor = vec3(0.9, 0.2, 0.3); // Ruby
-        else if (colorIdx < 2.0) rayColor = vec3(0.2, 0.4, 0.9); // Sapphire
-        else if (colorIdx < 3.0) rayColor = vec3(0.95, 0.85, 0.2); // Gold
-        else if (colorIdx < 4.0) rayColor = vec3(0.2, 0.85, 0.4); // Emerald
-        else if (colorIdx < 5.0) rayColor = vec3(0.75, 0.3, 0.85); // Amethyst
-        else rayColor = vec3(0.95, 0.55, 0.2); // Amber
+        if (colorIdx < 1.0) rayColor = vec3(1.0, 0.15, 0.25); // Intense Ruby
+        else if (colorIdx < 2.0) rayColor = vec3(0.15, 0.35, 1.0); // Intense Sapphire
+        else if (colorIdx < 3.0) rayColor = vec3(1.0, 0.9, 0.15); // Intense Gold
+        else if (colorIdx < 4.0) rayColor = vec3(0.15, 0.95, 0.4); // Intense Emerald
+        else if (colorIdx < 5.0) rayColor = vec3(0.85, 0.25, 0.95); // Intense Amethyst
+        else rayColor = vec3(1.0, 0.5, 0.15); // Intense Amber
 
-        // Add shimmer
-        float shimmer = sin(uv.y * 15.0 + iTime * 1.5 + v * 1.5) * 0.25 + 0.75;
+        float shimmer = sin(uv.y * 15.0 + iTime * 1.5 + v * 1.5) * 0.2 + 0.8;
 
-        vitralCol += rayColor * ray * shimmer * 0.18;
+        vitralCol += rayColor * ray * shimmer * 0.22; // Increased intensity
       }
 
-      // Blend cathedral effect - intensify saturation with progress
-      float saturationBoost = 1.0 + fadeIn * 0.5;
+      // Saturation boost increases with time
+      float saturationBoost = 1.0 + fadeIn * 0.8;
       vitralCol *= saturationBoost;
       col = mix(col, col + vitralCol, fadeIn);
 
-      // 360 degree ambient glow from all around
-      vec3 ambientGlow = vec3(0.4, 0.3, 0.5) * 0.25;
+      // Golden-tinted ambient glow from all around
+      vec3 ambientGlow = vec3(0.5, 0.4, 0.3) * 0.3;
       col += ambientGlow * fadeIn;
+
+      // Extra bloom/glow effect as fog deepens
+      col = mix(col, col * 1.2, deepFadeIn * 0.3);
     }
 
-    // Phase 4: Final white-out immersion (260s+)
+    // Phase 4: Final white-out immersion with GOLDEN + COLORED crescendo (260s+)
     if (iAudioTime > phase4Start) {
-      float whiteOutProgress = smoothstep(0.0, 40.0, iAudioTime - phase4Start);
+      float whiteOutProgress = smoothstep(0.0, 45.0, iAudioTime - phase4Start);
+      float earlyPhase = 1.0 - smoothstep(0.0, 0.5, whiteOutProgress); // First half
 
-      // Progressive white fog envelope from all directions
-      float whiteFog = whiteOutProgress;
+      // === GOLDEN CRESCENDO before white-out ===
+      // Intense golden fog envelope
+      vec3 goldenCrescendo = vec3(1.0, 0.9, 0.5) * earlyPhase * 0.6;
 
-      // Add final colored light bursts before white-out
+      // Swirling cathedral colors at peak intensity
       vec3 finalColors = vec3(0.0);
-      for(float f = 0.0; f < 8.0; f++) {
-        float burstAngle = f * 0.785 + iTime * 0.1;
+      for(float f = 0.0; f < 12.0; f++) {
+        float burstAngle = f * 0.524 + iTime * 0.08;
         float burstTheta = theta - burstAngle;
         float burstDist = abs(sin(burstTheta * 0.5));
-        float burst = exp(-burstDist * burstDist * 20.0) * (1.0 - whiteOutProgress);
+        float burst = exp(-burstDist * burstDist * 15.0) * earlyPhase;
 
-        vec3 burstColor = vec3(
-          0.8 + 0.2 * sin(f * 1.0),
-          0.7 + 0.3 * sin(f * 1.5 + 1.0),
-          0.9 + 0.1 * sin(f * 2.0 + 2.0)
-        );
-        finalColors += burstColor * burst * 0.2;
+        // Intense cathedral colors
+        vec3 burstColor;
+        float colorIdx = mod(f, 6.0);
+        if (colorIdx < 1.0) burstColor = vec3(1.0, 0.2, 0.3);
+        else if (colorIdx < 2.0) burstColor = vec3(0.2, 0.4, 1.0);
+        else if (colorIdx < 3.0) burstColor = vec3(1.0, 0.9, 0.2);
+        else if (colorIdx < 4.0) burstColor = vec3(0.2, 1.0, 0.5);
+        else if (colorIdx < 5.0) burstColor = vec3(0.9, 0.3, 1.0);
+        else burstColor = vec3(1.0, 0.6, 0.2);
+
+        finalColors += burstColor * burst * 0.25;
       }
-      col += finalColors;
 
-      // Intensify saturation before final white
-      col = mix(col, col * 1.4, (1.0 - whiteOutProgress) * 0.3);
+      // Golden + colored fog from below rises to meet from above
+      float risingGolden = smoothstep(-0.8, 0.5, uv.y) * earlyPhase;
+      col += vec3(1.0, 0.85, 0.4) * risingGolden * 0.4;
 
-      // Final white immersion
-      vec3 divineWhite = vec3(1.0, 0.98, 0.96);
-      col = mix(col, divineWhite, whiteFog * whiteFog); // Quadratic for dramatic end
+      col += goldenCrescendo + finalColors;
+
+      // Peak saturation before white
+      float satPeak = sin(whiteOutProgress * 3.14159) * 0.5; // Peaks in middle
+      col = mix(col, col * 1.5, satPeak);
+
+      // Final divine white immersion - warm tinted
+      vec3 divineWhite = vec3(1.0, 0.99, 0.95);
+      col = mix(col, divineWhite, whiteOutProgress * whiteOutProgress);
     }
 
     // Progressive saturation and glow intensification throughout phases
@@ -391,24 +465,66 @@ const fragmentShader = `
     col *= 0.9 + breath * 0.1;
 
     // === POLE EFFECTS - MINIMAL AT START, EXPANDS WITH PHASES ===
-    // Inferior pole - always dark
+
+    // === INFERIOR POLE - GOLDEN EMERGENCE FROM BELOW ===
     float inferiorPole = smoothstep(-0.1, -0.7, rd.y);
-    col = mix(col, vec3(0.0), inferiorPole);
-    col += vec3(0.005, 0.008, 0.015) * inferiorPole;
+    float deepBelow = smoothstep(0.0, -0.9, rd.y); // Very deep below
 
-    // Superior pole - MINIMAL fog at start (just cover seam), expands with phases
-    float basePoleSize = 0.95; // Very tight - just the seam
-    float expandedPoleSize = mix(basePoleSize, 0.5, fogExpansion); // Expands down to 0.5
+    // Calculate golden emergence based on phase progress
+    float goldenBelowIntensity = 0.0;
+    if (iAudioTime > phase1Start) {
+      goldenBelowIntensity = smoothstep(0.0, 30.0, iAudioTime - phase1Start) * 0.3;
+    }
+    if (iAudioTime > phase2Start) {
+      goldenBelowIntensity += smoothstep(0.0, 20.0, iAudioTime - phase2Start) * 0.4;
+    }
+    if (iAudioTime > phase3Start) {
+      goldenBelowIntensity += smoothstep(0.0, 25.0, iAudioTime - phase3Start) * 0.5;
+    }
+    goldenBelowIntensity = min(goldenBelowIntensity, 1.2); // Cap it
 
-    float superiorPole = smoothstep(expandedPoleSize, 0.98, rd.y);
+    // Before phases: pure darkness
+    vec3 depthColor = vec3(0.0);
 
-    // Fog color shifts from subtle to bright white with phases
-    vec3 poleFogColor = mix(vec3(0.1, 0.12, 0.15), vec3(0.95, 0.95, 0.98), fogExpansion);
-    col = mix(col, poleFogColor, superiorPole * (0.3 + fogExpansion * 0.7));
+    // During phases: golden light emerges from below
+    if (goldenBelowIntensity > 0.0) {
+      // Golden glow rising from the depths
+      vec3 deepGold = vec3(1.0, 0.75, 0.3);
+      vec3 warmGold = vec3(1.0, 0.85, 0.5);
 
-    // Very top always has subtle coverage for seam
-    float poleCore = smoothstep(0.96, 1.0, rd.y);
-    col = mix(col, vec3(0.6, 0.65, 0.7), poleCore * 0.6);
+      // Pulsing golden light from below
+      float goldenPulse = sin(iTime * 0.6) * 0.2 + 0.8;
+
+      // Radial golden glow centered below
+      float belowGlow = exp(-deepBelow * 2.0) * goldenBelowIntensity * goldenPulse;
+
+      // Add golden rays rising from below
+      float risingRays = 0.0;
+      for(float br = 0.0; br < 6.0; br++) {
+        float rayAngle = br * 1.047 + iTime * 0.04;
+        float rayTheta = theta - rayAngle;
+        float rayDist = abs(sin(rayTheta * 3.0));
+        float ray = exp(-rayDist * rayDist * 20.0);
+        ray *= smoothstep(-0.9, -0.2, rd.y); // Fade as rises
+        risingRays += ray * 0.1;
+      }
+
+      depthColor = mix(deepGold, warmGold, belowGlow) * (belowGlow + risingRays * goldenBelowIntensity);
+    }
+
+    // Apply inferior pole - darkness at start, golden during phases
+    col = mix(col, depthColor, inferiorPole);
+
+    // === SUPERIOR POLE - STAR APEX ALREADY HANDLES THIS ===
+    // Just add subtle fog expansion for atmosphere (star handles the seam hiding)
+    float basePoleSize = 0.92; // Star handles the very top
+    float expandedPoleSize = mix(basePoleSize, 0.5, fogExpansion);
+
+    float superiorPole = smoothstep(expandedPoleSize, 0.96, rd.y);
+
+    // Fog color shifts from subtle to golden-white with phases
+    vec3 poleFogColor = mix(vec3(0.1, 0.12, 0.15), vec3(1.0, 0.95, 0.85), fogExpansion);
+    col = mix(col, poleFogColor, superiorPole * (0.2 + fogExpansion * 0.6));
 
     // Apply brightness and intro
     col *= iBrightness * iIntroProgress;
