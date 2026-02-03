@@ -122,8 +122,8 @@ const fragmentShader = `
       forwardMotion = phaseTime * 0.8 * accel;
     }
 
-    // === BEACON ===
-    if (introComplete > 0.0 && currentPhase < 6) {
+    // === BEACON === (disabled for phase 5 - warp void has no destination)
+    if (introComplete > 0.0 && currentPhase < 5) {
       float beaconDistX = abs(rd.x);
       float beaconDistY = abs(rd.y);
       float forwardFacing = smoothstep(0.1, -0.4, rd.z);
@@ -265,15 +265,49 @@ const fragmentShader = `
           h = hash(cellId);
         }
         else {
-          // SPIRAL
-          float radius = length(p.xz);
-          float angle = atan(p.z, p.x);
-          float armAngle = angle + radius * 0.4 + p.y * 0.2;
-          float armId = floor(armAngle / 1.047);
-          float armQ = mod(armAngle, 1.047) - 0.524;
-          cellId = vec3(floor(radius / spacing), armId, floor(p.y / 1.5));
-          d = abs(armQ) * max(radius * 0.25, 0.5) + abs(mod(radius, spacing) - spacing * 0.5) * 0.5;
+          // PHASE 5: WARP THROUGH THE VOID
+          // Lights move TOWARD user, short lifespans, darkness with bright flashes
+
+          // Use spherical coordinates for omnidirectional spawning
+          float theta = atan(p.z, p.x);
+          float phi = asin(clamp(p.y / max(length(p), 0.01), -1.0, 1.0));
+          float dist = length(p);
+
+          // Time-based cell that creates movement toward viewer
+          float speed = 4.0; // Fast movement
+          float movingDist = dist + phaseTime * speed;
+
+          // Sparse, random cell distribution
+          float cellSize = 3.5;
+          cellId = vec3(
+            floor(theta * 3.0 + sin(phi * 5.0) * 0.5),
+            floor(phi * 4.0 + cos(theta * 3.0) * 0.5),
+            floor(movingDist / cellSize)
+          );
+
           h = hash(cellId);
+          float h4 = fract(h * 531.7);
+
+          // Lifespan: each light appears, brightens, fades (2-4 second cycle)
+          float lifespan = 2.0 + h * 2.0;
+          float birthTime = h4 * lifespan;
+          float localTime = mod(phaseTime + birthTime, lifespan);
+          float lifeFade = sin(localTime / lifespan * 3.14159); // Smooth in-out
+
+          // Only ~40% of cells have visible lights (darkness)
+          float spawnChance = step(0.6, h);
+          lifeFade *= spawnChance;
+
+          // Distance within cell
+          float cellDist = mod(movingDist, cellSize);
+          d = abs(cellDist - cellSize * 0.5) * 0.4;
+
+          // Streak effect: elongate based on speed
+          float streak = smoothstep(0.8, 0.0, abs(cellDist - cellSize * 0.5) / cellSize);
+          d = mix(d, d * 0.3, streak * 0.5);
+
+          // Store lifeFade in h for use in lighting
+          h = lifeFade;
         }
 
         float h2 = fract(h * 127.1);
@@ -297,6 +331,22 @@ const fragmentShader = `
           light = (core * 1.5 + glow * glow * 0.6 + neonGlow) * pulse;
         }
 
+        // Phase 5: Warp void special lighting
+        if (currentPhase == 5) {
+          // h contains lifeFade for this phase
+          float lifeFade = h;
+
+          // Bright flash glow
+          float warpGlow = exp(-d * d * 15.0) * 3.0;
+          float streakGlow = exp(-d * 3.0) * 1.5;
+          light = (warpGlow + streakGlow) * lifeFade;
+
+          // Occasional bright beacon flashes
+          if (h3 > 0.92) {
+            light *= 3.0; // Extra bright beacons
+          }
+        }
+
         light *= (0.7 + h3 * 0.5) / (1.0 + t * 0.025);
 
         // Visibility
@@ -307,6 +357,22 @@ const fragmentShader = `
         // Color
         vec3 lightColor = getGridColor(currentPhase, h2, shellAngle, iTime);
 
+        // Phase 5: Multi-color from all previous phases
+        if (currentPhase == 5) {
+          // Cycle through all phase colors based on cell hash
+          int colorPhase = int(mod(h2 * 6.0, 5.0));
+          if (colorPhase == 0) lightColor = vec3(1.0, 0.15, 0.1);       // Red
+          else if (colorPhase == 1) lightColor = vec3(0.1, 0.9, 0.4);   // Emerald
+          else if (colorPhase == 2) lightColor = vec3(0.3, 0.9, 1.0);   // Cyan
+          else if (colorPhase == 3) lightColor = vec3(1.0, 0.75, 0.2);  // Golden
+          else lightColor = vec3(0.7, 0.2, 0.9);                         // Amethyst
+
+          // Add white core to bright beacons
+          if (h3 > 0.92) {
+            lightColor = mix(lightColor, vec3(1.0), 0.5);
+          }
+        }
+
         // Tint toward beacon near horizon
         float forwardness = smoothstep(0.2, -0.6, rd.z);
         float horizonProx = smoothstep(0.4, 0.0, abs(rd.y));
@@ -316,6 +382,35 @@ const fragmentShader = `
 
         t += max(d * 0.5, 0.3);
         if (t > maxDist) break;
+      }
+    }
+
+    // === PHASE 5: PULSE WAVE RINGS ===
+    if (currentPhase == 5 && introComplete > 0.0) {
+      // Multiple expanding rings from random origins
+      for (int w = 0; w < 4; w++) {
+        float waveOffset = float(w) * 23.7;
+        float waveTime = mod(phaseTime + waveOffset, 12.0); // 12 second cycle per wave
+
+        // Ring expands outward then fades
+        float ringRadius = waveTime * 8.0; // Expansion speed
+        float ringFade = 1.0 - smoothstep(8.0, 12.0, waveTime);
+
+        // Distance from viewer to ring
+        float viewerDist = length(rd * ringRadius);
+        float ringDist = abs(length(vWorldPosition * 0.1) - ringRadius * 0.3);
+
+        // Thin glowing ring
+        float ringGlow = exp(-ringDist * ringDist * 2.0) * ringFade * 0.4;
+
+        // Ring color cycles
+        vec3 ringColor;
+        if (w == 0) ringColor = vec3(1.0, 0.2, 0.3);
+        else if (w == 1) ringColor = vec3(0.2, 0.9, 0.5);
+        else if (w == 2) ringColor = vec3(0.3, 0.5, 1.0);
+        else ringColor = vec3(1.0, 0.8, 0.2);
+
+        col += ringColor * ringGlow * gridVisibility;
       }
     }
 
