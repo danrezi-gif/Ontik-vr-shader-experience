@@ -27,9 +27,10 @@ interface ShaderRendererProps {
   zoom: number;
   headRotationY: number;
   introProgress: number;
+  audioTime: number;
 }
 
-function ShaderRenderer({ shaderId, audioData, speed, pulse, brightness, colorShift, zoom, headRotationY, introProgress }: ShaderRendererProps) {
+function ShaderRenderer({ shaderId, audioData, speed, pulse, brightness, colorShift, zoom, headRotationY, introProgress, audioTime }: ShaderRendererProps) {
   switch (shaderId) {
     case 'audio-reactive':
       return <VRShaderScene audioData={audioData} paletteIndex={0} />;
@@ -40,7 +41,7 @@ function ShaderRenderer({ shaderId, audioData, speed, pulse, brightness, colorSh
     case 'infinite-light':
       return <InfiniteLightShader speed={speed} brightness={brightness} colorShift={colorShift} zoom={zoom} pulse={pulse} headRotationY={headRotationY} introProgress={introProgress} />;
     case 'sacred-vessels':
-      return <SacredVesselsShader speed={speed} brightness={brightness} colorShift={colorShift} headRotationY={headRotationY} introProgress={introProgress} />;
+      return <SacredVesselsShader speed={speed} brightness={brightness} colorShift={colorShift} headRotationY={headRotationY} introProgress={introProgress} audioTime={audioTime} />;
     case 'sunset-clouds':
       return <SunsetCloudsShader speed={speed} />;
     case 'platonic-solids':
@@ -641,7 +642,7 @@ function VRIntroAnimator({ started, onProgress, onComplete, shaderId }: VRIntroA
     const elapsed = Date.now() - startTimeRef.current;
 
     // Shader-specific intro durations
-    const duration = (shaderId === 'infinite-light' || shaderId === 'platonic-solids') ? 35000 : 8000; // 35s for infinite light & platonic, 8s for others
+    const duration = (shaderId === 'infinite-light' || shaderId === 'platonic-solids') ? 35000 : 8000;
     const linearProgress = Math.min(1, elapsed / duration);
 
     // Apply easing curve based on shader
@@ -664,6 +665,30 @@ function VRIntroAnimator({ started, onProgress, onComplete, shaderId }: VRIntroA
   return null;
 }
 
+// Audio time tracker - reads playback position from globalAudio
+interface AudioTimeTrackerProps {
+  onTimeUpdate: (time: number) => void;
+}
+
+function AudioTimeTracker({ onTimeUpdate }: AudioTimeTrackerProps) {
+  useFrame(() => {
+    // Get current playback time from positional or regular audio
+    const audio = globalAudio.positionalAudio?.isPlaying
+      ? globalAudio.positionalAudio
+      : globalAudio.audio;
+
+    if (audio && audio.isPlaying && audio.buffer) {
+      // Calculate current time based on context time and when playback started
+      const context = audio.context;
+      const offset = (audio as any)._startedAt || 0;
+      const currentTime = context.currentTime - offset;
+      onTimeUpdate(Math.max(0, currentTime));
+    }
+  });
+
+  return null;
+}
+
 function App() {
   const [selectedShader, setSelectedShader] = useState<string | null>(null);
   const [vrError, setVrError] = useState<string | null>(null);
@@ -676,6 +701,7 @@ function App() {
   const [baseBrightness, setBaseBrightness] = useState(1.5);
   const [colorShift, setColorShift] = useState(0.0);
   const [zoom, setZoom] = useState(0.0);
+  const [audioTime, setAudioTime] = useState(0);
   const { audioData, toggleListening } = useAudioAnalyzer();
 
   // Calculate effective brightness (intro affects it for abstract-waves and tunnel-lights)
@@ -698,6 +724,10 @@ function App() {
 
   const handleHeadRotationCapture = useCallback((rotation: number) => {
     setHeadRotationY(rotation);
+  }, []);
+
+  const handleAudioTimeUpdate = useCallback((time: number) => {
+    setAudioTime(time);
   }, []);
 
   const handleSpeedChange = useCallback((delta: number) => {
@@ -816,6 +846,7 @@ function App() {
               zoom={zoom}
               headRotationY={headRotationY}
               introProgress={introProgress}
+              audioTime={audioTime}
             />
             <VRControllerHandler
               onBack={handleBack}
@@ -833,6 +864,8 @@ function App() {
               onComplete={handleIntroComplete}
               shaderId={selectedShader || undefined}
             />
+            {/* Track audio playback time for shader sync */}
+            <AudioTimeTracker onTimeUpdate={handleAudioTimeUpdate} />
           </Suspense>
         </XR>
       </Canvas>

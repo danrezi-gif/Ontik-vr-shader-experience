@@ -18,6 +18,7 @@ const fragmentShader = `
   uniform float iBrightness;
   uniform float iIntroProgress;
   uniform float iColorShift;
+  uniform float iAudioTime;
   varying vec3 vWorldPosition;
   varying vec2 vUv;
 
@@ -63,10 +64,9 @@ const fragmentShader = `
     // Time for animation
     float t = iTime * 0.15;
 
-    // === ASCENDING MOVEMENT ===
-    // User rises upward through the light - creates vertical drift
-    float ascentSpeed = iTime * 0.08; // Slow, meditative rise
-    float ascentY = uv.y - ascentSpeed; // Shift view upward over time
+    // === ASCENDING MOVEMENT (INVERTED - streams flow DOWN, user rises UP) ===
+    float ascentSpeed = iTime * 0.08;
+    float ascentY = uv.y + ascentSpeed; // INVERTED: + instead of - for ascending feeling
 
     // Create multiple vertical light columns (vessels)
     float numColumns = 5.0;
@@ -95,10 +95,10 @@ const fragmentShader = `
         float scale = 8.0 + j * 4.0;
         float speed = t * (1.0 + j * 0.3);
 
-        // Ascending UV - particles stream past as we rise
+        // Ascending UV - particles stream DOWN as we rise UP
         vec2 particleUV = vec2(
           uv.x * scale + i * 3.7,
-          ascentY * scale * 2.0 + speed
+          ascentY * scale * 2.0 - speed // Negative speed for downward stream
         );
 
         float n = noise(particleUV);
@@ -107,7 +107,7 @@ const fragmentShader = `
         float particle = smoothstep(0.6, 0.8, n);
 
         // Vertical streaking - enhanced for ascent feel
-        float streak = noise(vec2(uv.x * 50.0 + i * 7.0, ascentY * 3.0 + speed * 2.0));
+        float streak = noise(vec2(uv.x * 50.0 + i * 7.0, ascentY * 3.0 - speed * 2.0));
         streak = smoothstep(0.3, 0.85, streak);
 
         particles += (particle * 0.6 + streak * 0.4) / (1.0 + j * 0.5);
@@ -136,9 +136,8 @@ const fragmentShader = `
     }
 
     // Luminous presence above - we ascend toward it
-    // Position shifts down as we rise (we approach from below)
-    float figureY = 0.4 - ascentSpeed * 0.3; // Figure descends relative to us
-    float figureY_clamped = mod(figureY + 1.0, 2.0) - 1.0; // Wrap around
+    float figureY = 0.4 + ascentSpeed * 0.3; // Figure rises with us
+    float figureY_clamped = mod(figureY + 1.0, 2.0) - 1.0;
 
     float centerDist = length(vec2(uv.x, (uv.y - figureY_clamped) * 0.5));
 
@@ -163,35 +162,83 @@ const fragmentShader = `
     vec3 figureColor = vec3(0.95, 0.98, 1.0);
     col += figureColor * figureGlow;
 
-    // Light rays descending from above
+    // Light rays from above
     float rays = 0.0;
     for(float k = 0.0; k < 5.0; k++) {
       float rayAngle = (k / 5.0) * 6.28318 + ascentSpeed * 0.2;
       float rayX = sin(rayAngle) * 0.15;
       float rayDist = abs(uv.x - rayX);
       float ray = exp(-rayDist * rayDist * 200.0);
-      ray *= smoothstep(-0.5, 0.8, uv.y); // Rays from above
-      ray *= (0.5 + 0.5 * sin(ascentY * 20.0 + k * 2.0)); // Shimmer
+      ray *= smoothstep(-0.5, 0.8, uv.y);
+      ray *= (0.5 + 0.5 * sin(ascentY * 20.0 + k * 2.0));
       rays += ray * 0.15;
     }
     col += vec3(0.8, 0.9, 1.0) * rays;
+
+    // === VERTICAL SEAM COVERAGE ===
+    // Soft fog at the wrap-around point (theta = ±π, which is uv.x near ±1)
+    float seamDist = min(abs(uv.x - 1.0), abs(uv.x + 1.0));
+    float seamFog = smoothstep(0.15, 0.0, seamDist); // Fog within 0.15 of seam
+    // Blend with soft blue-black fog
+    vec3 seamFogColor = vec3(0.02, 0.03, 0.05);
+    col = mix(col, seamFogColor, seamFog * 0.7);
+
+    // === GOLDEN ETHEREAL PRESENCE AT 2:23 (143s) ===
+    float triggerTime = 143.0;
+    float presenceDuration = 30.0;
+    float fadeInDuration = 8.0;
+    float fadeOutDuration = 8.0;
+
+    float timeSinceTrigger = iAudioTime - triggerTime;
+
+    if (timeSinceTrigger > 0.0 && timeSinceTrigger < presenceDuration) {
+      // Gradual emergence
+      float fadeIn = smoothstep(0.0, fadeInDuration, timeSinceTrigger);
+      float fadeOut = 1.0 - smoothstep(presenceDuration - fadeOutDuration, presenceDuration, timeSinceTrigger);
+      float presenceIntensity = fadeIn * fadeOut;
+
+      // Golden light that envelops everything
+      // Starts from above and surrounds the user
+      float goldenY = smoothstep(-0.5, 0.8, uv.y); // Stronger from above
+      float goldenCenter = exp(-length(vec2(uv.x * 0.5, uv.y - 0.3)) * 1.5); // Central presence
+
+      // Radial waves emanating outward
+      float wave = sin(length(vec2(uv.x, uv.y)) * 8.0 - iTime * 2.0) * 0.5 + 0.5;
+
+      // Breathing pulse
+      float breath = sin(iTime * 0.8) * 0.3 + 0.7;
+
+      // Combine golden presence
+      float goldenAmount = (goldenY * 0.5 + goldenCenter * 0.8 + wave * 0.2) * presenceIntensity * breath;
+
+      // Golden color - warm, divine
+      vec3 goldenColor = vec3(1.0, 0.85, 0.4); // Warm gold
+      vec3 whiteCore = vec3(1.0, 0.98, 0.9); // Bright white-gold center
+
+      // Mix based on intensity
+      vec3 divineGold = mix(goldenColor, whiteCore, goldenCenter * presenceIntensity);
+
+      // Add to scene - overwhelming at peak
+      col += divineGold * goldenAmount * 2.0;
+
+      // Also brighten existing colors toward gold
+      col = mix(col, col * vec3(1.2, 1.1, 0.8), presenceIntensity * 0.5);
+    }
 
     // Breathing/pulsing - very subtle
     float breath = sin(iTime * 0.3) * 0.5 + 0.5;
     col *= 0.9 + breath * 0.1;
 
     // === POLE EFFECTS ===
-    // Inferior pole - dark fog rising from below (hides seam, creates abyss)
-    float inferiorPole = smoothstep(-0.1, -0.7, rd.y); // Extended coverage - starts higher
-    col = mix(col, vec3(0.0), inferiorPole); // Full fade to black
-    // Add subtle dark blue fog tint
+    // Inferior pole - dark fog rising from below
+    float inferiorPole = smoothstep(-0.1, -0.7, rd.y);
+    col = mix(col, vec3(0.0), inferiorPole);
     col += vec3(0.01, 0.015, 0.03) * inferiorPole;
 
-    // Superior pole - subtle glow from above (preserves tunnel effect)
-    float superiorPole = smoothstep(0.7, 0.98, rd.y); // Only very top
-    vec3 divineLight = vec3(0.8, 0.85, 0.95); // Softer ethereal glow
-    col += divineLight * superiorPole * 0.6; // Reduced intensity
-    // Gentle bright core at very top
+    // Superior pole - subtle glow from above
+    float superiorPole = smoothstep(0.7, 0.98, rd.y);
+    vec3 divineLight = vec3(0.8, 0.85, 0.95);
+    col += divineLight * superiorPole * 0.6;
     float poleCore = smoothstep(0.92, 1.0, rd.y);
     col += vec3(1.0, 1.0, 1.0) * poleCore * 0.8;
 
@@ -201,7 +248,7 @@ const fragmentShader = `
     // Color shift
     col.b += iColorShift * 0.1;
 
-    // Tone mapping - preserve bright highlights
+    // Tone mapping
     col = col / (col + vec3(0.5));
     col = pow(col, vec3(0.85));
 
@@ -220,6 +267,7 @@ interface SacredVesselsShaderProps {
   pulse?: number;
   headRotationY?: number;
   introProgress?: number;
+  audioTime?: number;
 }
 
 export function SacredVesselsShader({
@@ -227,7 +275,8 @@ export function SacredVesselsShader({
   brightness = 1.0,
   colorShift = 0.0,
   headRotationY = 0,
-  introProgress = 0
+  introProgress = 0,
+  audioTime = 0
 }: SacredVesselsShaderProps) {
   const meshRef = useRef<THREE.Mesh>(null);
 
@@ -235,7 +284,8 @@ export function SacredVesselsShader({
     iTime: { value: 0 },
     iBrightness: { value: brightness },
     iIntroProgress: { value: introProgress },
-    iColorShift: { value: colorShift }
+    iColorShift: { value: colorShift },
+    iAudioTime: { value: audioTime }
   }), []);
 
   useFrame((state) => {
@@ -245,6 +295,7 @@ export function SacredVesselsShader({
       material.uniforms.iBrightness.value = brightness;
       material.uniforms.iIntroProgress.value = introProgress;
       material.uniforms.iColorShift.value = colorShift;
+      material.uniforms.iAudioTime.value = audioTime;
     }
   });
 
