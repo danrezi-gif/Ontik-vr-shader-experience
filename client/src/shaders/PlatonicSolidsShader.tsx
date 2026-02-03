@@ -97,23 +97,30 @@ const fragmentShader = `
     }
 
     // Calculate which solid to show (0-4)
+    // Slower cycle: each solid stays longer
     float sequenceTime = introProgress < 1.0
-      ? (introProgress - 0.15) / 0.17
-      : iTime * 0.12;
+      ? (introProgress - 0.15) / 0.34  // During intro: ~2x slower, each solid gets more time
+      : iTime * 0.05;  // Post-intro: very slow cycle (was 0.12)
 
     int solidIndex = int(mod(sequenceTime, 5.0));
     float solidBlend = fract(sequenceTime);
 
     // Fade factor for transitions
-    float fadeIn = smoothstep(0.0, 0.2, solidBlend);
-    float fadeOut = 1.0 - smoothstep(0.8, 1.0, solidBlend);
+    float fadeIn = smoothstep(0.0, 0.1, solidBlend);
+    float fadeOut = 1.0 - smoothstep(0.9, 1.0, solidBlend);
     float solidAlpha = introProgress < 1.0 ? fadeIn : fadeIn * fadeOut;
+
+    // === APPROACH EFFECT ===
+    // Scale grows from small (0.3) to enormous (3.0) as we "approach" the solid
+    // Uses smoothstep for gradual acceleration
+    float approachProgress = smoothstep(0.0, 0.85, solidBlend);
+    float scale = mix(0.4, 4.0, approachProgress);  // Start small, grow huge
 
     // Color offset per solid (creates different hues)
     float colorOffset = float(solidIndex) * 1.2;
 
-    // Rotation speed
-    float rotTime = iTime * 0.5;
+    // Rotation speed - slower for more contemplation
+    float rotTime = iTime * 0.3;
 
     // === RAYMARCH LOOP (reference style: accumulate color) ===
     for (int i = 0; i < 100; i++) {
@@ -131,17 +138,20 @@ const fragmentShader = `
       p.xy = mat2(c, -s, s, c) * p.xy;
 
       // Get distance to current solid
+      // Apply scale: divide position by scale to make solid appear larger
+      vec3 scaledP = p / scale;
+
       if (solidIndex == 0) {
-        d = 0.1 + 0.2 * abs(sdTetrahedron(p / 2.5) * 2.5);
+        d = 0.1 + 0.2 * abs(sdTetrahedron(scaledP / 2.5) * 2.5 * scale);
       } else if (solidIndex == 1) {
-        d = 0.1 + 0.2 * abs(sdCube(p));
+        d = 0.1 + 0.2 * abs(sdCube(scaledP) * scale);
       } else if (solidIndex == 2) {
         // Octahedron - closest to reference shader
-        d = 0.1 + 0.2 * abs(sdOctahedron(p));
+        d = 0.1 + 0.2 * abs(sdOctahedron(scaledP) * scale);
       } else if (solidIndex == 3) {
-        d = 0.1 + 0.2 * abs(sdDodecahedron(p));
+        d = 0.1 + 0.2 * abs(sdDodecahedron(scaledP) * scale);
       } else {
-        d = 0.1 + 0.2 * abs(sdIcosahedron(p));
+        d = 0.1 + 0.2 * abs(sdIcosahedron(scaledP) * scale);
       }
 
       // Accumulate color (reference style: sin wave + attenuation by distance)
