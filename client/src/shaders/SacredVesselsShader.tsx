@@ -14,6 +14,8 @@ const vertexShader = `
 `;
 
 const fragmentShader = `
+  precision highp float;
+
   uniform float iTime;
   uniform float iBrightness;
   uniform float iIntroProgress;
