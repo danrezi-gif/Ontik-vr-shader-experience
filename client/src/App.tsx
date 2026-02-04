@@ -142,11 +142,22 @@ interface VRControllerHandlerProps {
   onBrightnessChange: (delta: number) => void;
   onColorShiftChange: (delta: number) => void;
   onZoomChange: (delta: number) => void;
+  vrSessionActive: boolean;
 }
 
-function VRControllerHandler({ onBack, onSpeedChange, onBrightnessChange, onColorShiftChange, onZoomChange }: VRControllerHandlerProps) {
+function VRControllerHandler({ onBack, onSpeedChange, onBrightnessChange, onColorShiftChange, onZoomChange, vrSessionActive }: VRControllerHandlerProps) {
   const lastButtonStates = useRef<{ [key: string]: boolean }>({});
   const audioResumed = useRef(false);
+
+  // Reset refs when VR session becomes active (new session started)
+  useEffect(() => {
+    if (vrSessionActive) {
+      // Reset state for new VR session
+      lastButtonStates.current = {};
+      audioResumed.current = false;
+      console.log('VR session started - reset controller state');
+    }
+  }, [vrSessionActive]);
 
   useFrame((state) => {
     const session = state.gl.xr.getSession();
@@ -706,6 +717,35 @@ function App() {
   const [colorShift, setColorShift] = useState(0.0);
   const [zoom, setZoom] = useState(0.0);
   const [audioTime, setAudioTime] = useState(0);
+  const [vrSessionActive, setVrSessionActive] = useState(false);
+
+  // Subscribe to XR store session changes to detect external session end
+  useEffect(() => {
+    const unsubscribe = store.subscribe((state, prevState) => {
+      const hadSession = prevState.session !== null;
+      const hasSession = state.session !== null;
+
+      // Session started
+      if (!hadSession && hasSession) {
+        console.log('XR session started');
+        setVrSessionActive(true);
+      }
+
+      // Session ended (externally via menu button, headset removal, etc.)
+      if (hadSession && !hasSession) {
+        console.log('XR session ended externally');
+        setVrSessionActive(false);
+        // Reset VR-related state but keep selectedShader so user stays on experience page
+        setVrIntroStarted(false);
+        setIntroProgress(0);
+        setIntroComplete(false);
+        setHeadRotationY(0);
+        setVrError(null);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   // Calculate effective brightness (intro affects it for abstract-waves and tunnel-lights)
   const hasIntro = selectedShader === 'abstract-waves' || selectedShader === 'tunnel-lights' || selectedShader === 'infinite-light' || selectedShader === 'sacred-vessels' || selectedShader === 'platonic-solids';
@@ -788,6 +828,7 @@ function App() {
     setIntroComplete(false);
     setHeadRotationY(0);
     setVrError(null);
+    setVrSessionActive(false);
   }, []);
 
   const enterVR = useCallback(async () => {
@@ -851,6 +892,7 @@ function App() {
               onBrightnessChange={handleBrightnessChange}
               onColorShiftChange={handleColorShiftChange}
               onZoomChange={handleZoomChange}
+              vrSessionActive={vrSessionActive}
             />
             <HandGlows />
             <BackgroundMusic shouldPlay={musicStarted} shaderId={selectedShader} headRotationY={headRotationY} />
