@@ -591,16 +591,75 @@ const fragmentShader = `
     // Apply inferior pole - darkness at start, golden during phases
     col = mix(col, depthColor, inferiorPole);
 
-    // === SUPERIOR POLE - STAR APEX ALREADY HANDLES THIS ===
-    // Just add subtle fog expansion for atmosphere (star handles the seam hiding)
-    float basePoleSize = 0.92; // Star handles the very top
-    float expandedPoleSize = mix(basePoleSize, 0.5, fogExpansion);
+    // === SUPERIOR POLE - MINIMAL FOG JUST TO HIDE VERTEX ===
+    // Keep fog tight around the apex where streams converge
+    float poleFogSize = 0.94; // Only very close to apex
+    float superiorPole = smoothstep(poleFogSize, 0.98, rd.y);
 
-    float superiorPole = smoothstep(expandedPoleSize, 0.96, rd.y);
+    // Very subtle, low opacity fog - just enough to hide the convergence point
+    vec3 poleFogColor = vec3(0.9, 0.92, 1.0); // Subtle blue-white
+    col = mix(col, poleFogColor, superiorPole * 0.15); // Very low opacity
 
-    // Fog color shifts from subtle to golden-white with phases
-    vec3 poleFogColor = mix(vec3(0.1, 0.12, 0.15), vec3(1.0, 0.95, 0.85), fogExpansion);
-    col = mix(col, poleFogColor, superiorPole * (0.2 + fogExpansion * 0.6));
+    // === MULTICOLORED COTTON CANDY CLOUDS ===
+    // Soft, ethereal colored fog volumes surrounding the user
+    if (iAudioTime > phase1Start) {
+      float cloudsFadeIn = smoothstep(0.0, 15.0, iAudioTime - phase1Start);
+      float cloudsIntensity = cloudsFadeIn * 0.25; // Lower base opacity
+
+      // Intensify through phases
+      if (iAudioTime > phase2Start) {
+        cloudsIntensity = mix(0.25, 0.35, smoothstep(0.0, 20.0, iAudioTime - phase2Start));
+      }
+      if (iAudioTime > phase3Start) {
+        cloudsIntensity = mix(0.35, 0.45, smoothstep(0.0, 25.0, iAudioTime - phase3Start));
+      }
+
+      vec3 cottonCandyClouds = vec3(0.0);
+
+      // 8 different colored cloud volumes
+      for(float c = 0.0; c < 8.0; c++) {
+        // Each cloud has its own orbit position
+        float cloudOrbitAngle = c * 0.785 + iTime * 0.015 * (1.0 + c * 0.1);
+        float cloudVerticalOffset = sin(iTime * 0.08 + c * 1.2) * 0.15;
+
+        // 3D position in spherical space
+        float cloudTheta = theta - cloudOrbitAngle;
+        float cloudPhi = phi - cloudVerticalOffset;
+
+        // Soft volumetric cloud using layered noise
+        vec2 cloudUV = vec2(cloudTheta * 0.8, cloudPhi * 1.2 + iTime * 0.02);
+        float cloudNoise1 = fbm(cloudUV * 2.0 + c * 3.7);
+        float cloudNoise2 = fbm(cloudUV * 1.3 + c * 2.1 + vec2(iTime * 0.03, 0.0));
+        float cloudNoise = mix(cloudNoise1, cloudNoise2, 0.5);
+
+        // Soft cloud shape - cotton candy texture
+        float cloudShape = smoothstep(0.35, 0.7, cloudNoise);
+        cloudShape *= smoothstep(1.5, 0.0, abs(cloudTheta)); // Fade at edges
+        cloudShape *= smoothstep(1.2, 0.0, abs(cloudPhi - 0.2)); // Vertical bounds
+
+        // Stained glass cathedral colors
+        vec3 cloudColor;
+        if (c < 1.0) cloudColor = vec3(0.95, 0.25, 0.35);       // Ruby
+        else if (c < 2.0) cloudColor = vec3(0.2, 0.5, 0.95);    // Sapphire
+        else if (c < 3.0) cloudColor = vec3(0.15, 0.9, 0.85);   // Cyan/Teal
+        else if (c < 4.0) cloudColor = vec3(0.95, 0.4, 0.85);   // Magenta/Pink
+        else if (c < 5.0) cloudColor = vec3(0.2, 0.9, 0.4);     // Emerald
+        else if (c < 6.0) cloudColor = vec3(0.95, 0.75, 0.2);   // Amber/Gold
+        else if (c < 7.0) cloudColor = vec3(0.8, 0.3, 0.95);    // Violet/Purple
+        else cloudColor = vec3(0.95, 0.55, 0.25);               // Orange
+
+        // Soft glow around cloud centers
+        float cloudGlow = exp(-length(vec2(cloudTheta, (cloudPhi - 0.2) * 0.8)) * 1.5) * 0.4;
+
+        // Gentle breathing per cloud
+        float cloudBreath = sin(iTime * 0.4 + c * 0.9) * 0.15 + 0.85;
+
+        cottonCandyClouds += cloudColor * (cloudShape + cloudGlow) * cloudBreath;
+      }
+
+      // Apply clouds with translucent blending
+      col += cottonCandyClouds * cloudsIntensity * cloudsFadeIn;
+    }
 
     // Apply brightness and intro
     col *= iBrightness * iIntroProgress;
