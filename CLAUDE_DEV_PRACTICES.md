@@ -33,6 +33,58 @@
 - Commit immediately if build succeeds
 - Push so user can test on device
 
+## Collaborative Design Workflow
+
+**CRITICAL: Do NOT jump straight to code.** When the user suggests a new effect or feature:
+
+### Step 1: Understand the Vision
+- Ask for **references** (images, videos, other artworks, descriptions)
+- Ask **clarifying questions** about the feeling/mood they want
+- Discuss what makes the reference work visually
+
+### Step 2: Propose Architecture
+Before writing any code, present:
+- **Layer name**: What this effect will be called
+- **Parameters**: What controls will it have? (intensity, speed, color, etc.)
+- **Behavior**: How does it interact with existing layers?
+- **Dependencies**: Does it need audioTime? headRotation? New uniforms?
+
+Example discussion:
+```
+User: "I want a cathedral vitral effect"
+
+Claude: "Before I build this, let me propose:
+
+LAYER: Cathedral Vitral
+- Parameters:
+  - rayCount (how many colored rays, default 8?)
+  - saturation (how vivid, 0.0-1.0?)
+  - rotationSpeed (do rays rotate slowly?)
+  - fadeHeight (where do rays start appearing?)
+
+- Behavior: Additive colored rays from above
+- Timing: Should this be always-on or phase-triggered?
+
+Do you have reference images for the color palette?
+Should the rays be sharp or soft/diffuse?"
+```
+
+### Step 3: Agree Before Building
+- Wait for user confirmation on the architecture
+- Adjust parameters based on feedback
+- Only then write the code
+
+### Step 4: Implement Minimally
+- Start with the simplest version of the effect
+- Push and let user test
+- Iterate based on feedback
+
+### Why This Matters
+- Building too fast wastes time if it's not what the user wanted
+- Creative work requires conversation, not just execution
+- The user has the artistic vision; Claude has the technical skills
+- Together we build something neither could alone
+
 ## Anti-Patterns to Avoid
 
 - Adding drei Text component (causes white screen on mobile)
