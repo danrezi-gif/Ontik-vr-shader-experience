@@ -4,9 +4,11 @@ import * as THREE from 'three';
 
 const vertexShader = `
   varying vec3 vWorldPosition;
+  varying vec2 vUv;
 
   void main() {
     vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
+    vUv = uv;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
@@ -16,7 +18,11 @@ const fragmentShader = `
   uniform float iBrightness;
   uniform float iIntroProgress;
   uniform float iColorShift;
+  uniform vec2 iResolution;
   varying vec3 vWorldPosition;
+  varying vec2 vUv;
+
+  #define PI 3.14159265359
 
   // Hash functions
   float hash(vec3 p) {
@@ -25,7 +31,7 @@ const fragmentShader = `
     return fract((p.x + p.y) * p.z);
   }
 
-  // Phase timing - adjusted for 9:48 track
+  // Phase timing - adjusted for track
   const float PHASE_DURATION = 97.0;
   const float TRANSITION_TIME = 5.0;
 
@@ -33,14 +39,13 @@ const fragmentShader = `
   vec3 getBeaconColor(int phase) {
     if (phase == 0) return vec3(1.0, 0.15, 0.1);      // Red
     if (phase == 1) return vec3(0.1, 0.9, 0.4);       // Emerald
-    if (phase == 2) return vec3(0.3, 0.9, 1.0);       // Cyan (neon)
-    if (phase == 3) return vec3(1.0, 0.75, 0.2);      // Golden
-    if (phase == 4) return vec3(0.7, 0.2, 0.9);       // Amethyst
+    if (phase == 2) return vec3(1.0, 0.75, 0.2);      // Golden (was pillars)
+    if (phase == 3) return vec3(0.7, 0.2, 0.9);       // Amethyst (was diamond)
     return vec3(1.0, 1.0, 0.95);                       // White
   }
 
   // Grid colors
-  vec3 getGridColor(int phase, float h, float shellAngle, float time) {
+  vec3 getGridColor(int phase, float h) {
     if (phase == 0) {
       vec3 coolBlue = vec3(0.7, 0.85, 1.0);
       vec3 warmAccent = vec3(1.0, 0.8, 0.5);
@@ -50,31 +55,159 @@ const fragmentShader = `
       return mix(vec3(1.0, 0.2, 0.15), vec3(1.0, 0.5, 0.2), h);
     }
     if (phase == 2) {
-      // Neon ring palette - cyan to magenta with angle-based variation
-      float angleMix = sin(shellAngle * 2.0 + time * 0.3) * 0.5 + 0.5;
-      vec3 cyan = vec3(0.1, 0.9, 1.0);
-      vec3 magenta = vec3(1.0, 0.2, 0.8);
-      vec3 blue = vec3(0.2, 0.4, 1.0);
-      vec3 baseColor = mix(cyan, magenta, angleMix);
-      return mix(baseColor, blue, h * 0.4);
-    }
-    if (phase == 3) {
+      // Pillars - blue tones
       return mix(vec3(0.15, 0.35, 1.0), vec3(0.3, 0.7, 1.0), h);
     }
-    if (phase == 4) {
+    if (phase == 3) {
+      // Diamond - golden
       return mix(vec3(1.0, 0.8, 0.2), vec3(1.0, 0.6, 0.1), h);
     }
-    return mix(vec3(0.7, 0.2, 0.9), vec3(0.9, 0.4, 1.0), h);
+    return vec3(1.0);
   }
 
   // Get spacing for each geometry
   float getSpacing(int phase) {
     if (phase == 0) return 2.2;  // Cubic
     if (phase == 1) return 1.8;  // Hexagonal
-    if (phase == 2) return 3.0;  // Spherical
-    if (phase == 3) return 2.5;  // Pillars
-    if (phase == 4) return 2.0;  // Diamond
-    return 2.0;                   // Spiral
+    if (phase == 2) return 2.5;  // Pillars
+    if (phase == 3) return 2.0;  // Diamond
+    return 2.0;
+  }
+
+  // Get speed multiplier - progressively faster from phase 1 to 4
+  float getSpeedMultiplier(int phase, float phaseProgress) {
+    if (phase == 0) return 1.0;
+    if (phase == 1) return 1.5 + phaseProgress * 0.5;  // 1.5 -> 2.0
+    if (phase == 2) return 2.5 + phaseProgress * 1.0;  // 2.5 -> 3.5
+    if (phase == 3) return 4.0 + phaseProgress * 2.0;  // 4.0 -> 6.0
+    return 6.0;
+  }
+
+  // === PALETTE SHADER (Phase 4) ===
+  vec3 palette(float t) {
+    vec3 a = vec3(0.5, 0.5, 0.5);
+    vec3 b = vec3(0.5, 0.5, 0.5);
+    vec3 c = vec3(1.0, 1.0, 1.0);
+    vec3 d = vec3(0.2, 0.4, 0.5);
+    return a + b * cos(2.0 * PI * (c * t + d));
+  }
+
+  vec3 renderPalettePhase(vec3 rd, float time, float visibility) {
+    vec2 uv = rd.xy * 2.0;
+
+    float angle = atan(-uv.y, -uv.x) / (2.0 * PI);
+    float dist = length(uv) * 1.5;
+
+    // Simulated audio level
+    float level = 0.3 + 0.2 * sin(time * 2.0) + 0.1 * sin(time * 3.7);
+
+    angle = abs(2.0 * (1.0 - angle));
+
+    if (dist < 1.0) {
+      dist = pow(dist, (1.0 - 0.95 * level) * 20.0);
+    } else {
+      dist = pow(pow(2.0, 100.0), 1.0 - dist);
+    }
+
+    vec3 result = (1.0 + 5.0 * level) * dist * palette(-time / 2.0 + angle);
+    vec3 color = tanh(result);
+
+    return color * visibility;
+  }
+
+  // === TORUS SHADER (Phase 5) ===
+  const float Radius1 = 8.0;
+  const float Radius2 = 3.0;
+  const float TorusSpeed1 = 0.3;
+  const float TorusSpeed2 = 15.0;
+
+  float sdTorus(vec3 p, vec2 t) {
+    vec2 q = vec2(length(p.xz) - t.x, p.y);
+    return length(q) - t.y;
+  }
+
+  float mapTorus(vec3 pos) {
+    vec3 q = pos;
+    float d = -sdTorus(q.xzy, vec2(Radius1, Radius2));
+    return d;
+  }
+
+  vec3 calcTorusNormal(vec3 pos) {
+    const float ep = 0.0001;
+    vec2 e = vec2(1.0, -1.0) * 0.5773;
+    return normalize(
+      e.xyy * mapTorus(pos + e.xyy * ep) +
+      e.yyx * mapTorus(pos + e.yyx * ep) +
+      e.yxy * mapTorus(pos + e.yxy * ep) +
+      e.xxx * mapTorus(pos + e.xxx * ep)
+    );
+  }
+
+  vec3 applyFog(vec3 rgb, float distance, float strength) {
+    float fogAmount = 1.0 - exp(-distance * strength);
+    vec3 fogColor = vec3(0.0);
+    return mix(rgb, fogColor, fogAmount);
+  }
+
+  vec3 renderTorusPhase(vec3 rd, float time, float visibility, vec3 noiseCoord) {
+    vec3 ro = vec3(0.0, Radius1, 0.0);
+    rd = rd.zxy;
+
+    float rotTime = time * TorusSpeed1;
+
+    mat3 m = mat3(
+      1.0, 0.0, 0.0,
+      0.0, cos(rotTime), sin(rotTime),
+      0.0, -sin(rotTime), cos(rotTime)
+    );
+
+    rd = m * rd;
+
+    float t = 0.5;
+    for (int i = 0; i < 64; i++) {
+      vec3 p = ro + t * rd;
+      float h = mapTorus(p);
+      if (abs(h) < 0.001) break;
+      t += h;
+    }
+
+    vec3 p = ro + t * rd;
+    float theta = (atan(p.x, p.y) / PI + 1.0) * 150.0 - time * TorusSpeed2;
+    float phi = (atan(length(p.xy) - Radius1, p.z) / PI + 1.0) * 30.0;
+
+    float itheta = floor(theta);
+    float iphi = floor(phi);
+    float ftheta = theta - itheta;
+    float fphi = phi - iphi;
+
+    ftheta = clamp(ftheta * 0.6 + 0.2, 0.0, 1.0);
+    fphi = clamp(fphi * 0.8 + 0.1, 0.0, 1.0);
+
+    // Use noise for randomization
+    float randVal = hash(vec3(iphi, itheta, 0.0) * 0.386557);
+    float digit = floor(randVal * 10.0);
+
+    // Time-based digit variation
+    float freq = sin(time * 0.5 + randVal * 6.28) * 0.5 + 0.5;
+    digit = mod(digit + (freq > 0.5 ? 1.0 : 0.0), 10.0);
+
+    // Simple digit pattern
+    vec2 digitUV = vec2(ftheta, fphi) * 2.0 - 1.0;
+    float pattern = 0.0;
+    float d = mod(digit, 10.0);
+    if (d < 2.0) pattern = step(abs(digitUV.y - 0.5), 0.15) + step(abs(digitUV.y + 0.5), 0.15);
+    else if (d < 4.0) pattern = step(abs(digitUV.y), 0.15);
+    else if (d < 6.0) pattern = step(abs(digitUV.x), 0.15);
+    else if (d < 8.0) pattern = step(length(digitUV), 0.4);
+    else pattern = step(abs(digitUV.x - digitUV.y), 0.2);
+
+    vec3 color = vec3(clamp(pattern, 0.0, 1.0));
+    color *= vec3(0.2, 1.0, 0.3); // Green matrix color
+
+    vec3 norm = calcTorusNormal(p);
+    color = applyFog(color, t, 0.2 * ((norm.z * norm.z) / 3.0 + 0.1 + clamp(norm.y * 0.4, 0.0, 1.0)));
+
+    return color * visibility;
   }
 
   void main() {
@@ -94,36 +227,36 @@ const fragmentShader = `
     col += vec3(1.0, 0.95, 0.9) * centralGlow * 1.5;
 
     // === JOURNEY PHASE CALCULATION ===
-    float journeyTime = max(0.0, iTime - 5.0); // Time since intro
+    float journeyTime = max(0.0, iTime - 5.0);
     int currentPhase = int(floor(journeyTime / PHASE_DURATION));
     currentPhase = min(currentPhase, 5);
     float phaseTime = mod(journeyTime, PHASE_DURATION);
+    float phaseProgress = phaseTime / PHASE_DURATION;
 
     // Transition timing
     float transitionStart = PHASE_DURATION - TRANSITION_TIME;
     float inTransition = smoothstep(transitionStart, PHASE_DURATION, phaseTime);
-    float postTransition = smoothstep(0.0, 3.0, phaseTime); // Fade in after transition
+    float postTransition = smoothstep(0.0, 3.0, phaseTime);
 
-    // Grid visibility: full during phase, fade during transition, fade in at start of new phase
+    // Grid visibility
     float gridVisibility = 1.0;
     if (phaseTime > transitionStart) {
-      // Fade out current grid near end of phase
       gridVisibility = 1.0 - smoothstep(transitionStart, PHASE_DURATION - 1.0, phaseTime);
     }
     if (phaseTime < 3.0 && currentPhase > 0) {
-      // Fade in new grid after transition (only for phases 1+, not phase 0)
       gridVisibility *= postTransition;
     }
 
-    // Forward motion - resets each phase so new grid appears around viewer
+    // Forward motion with progressive speed
     float forwardMotion = 0.0;
-    if (introComplete > 0.0) {
+    if (introComplete > 0.0 && currentPhase < 4) {
+      float speedMult = getSpeedMultiplier(currentPhase, phaseProgress);
       float accel = smoothstep(0.0, 10.0, phaseTime);
-      forwardMotion = phaseTime * 0.8 * accel;
+      forwardMotion = phaseTime * 0.8 * accel * speedMult;
     }
 
-    // === BEACON === (disabled for phase 5 - warp void has no destination)
-    if (introComplete > 0.0 && currentPhase < 5) {
+    // === BEACON === (only for phases 0-3)
+    if (introComplete > 0.0 && currentPhase < 4) {
       float beaconDistX = abs(rd.x);
       float beaconDistY = abs(rd.y);
       float forwardFacing = smoothstep(0.1, -0.4, rd.z);
@@ -136,23 +269,21 @@ const fragmentShader = `
 
       float pulse = sin(iTime * 0.8) * 0.15 + 0.85;
 
-      // Beacon intensifies near transition
       float approachBright = 1.0 + smoothstep(transitionStart - 25.0, transitionStart, phaseTime) * 2.5;
-      approachBright += inTransition * 4.0; // Flash during transition
+      approachBright += inTransition * 4.0;
 
       float beaconIntensity = (beaconCore * 2.0 + beaconGlow * 0.8) * pulse * introComplete * approachBright;
 
       vec3 beaconColor = getBeaconColor(currentPhase);
       col += beaconColor * beaconIntensity;
 
-      // Transition flash
       if (inTransition > 0.0) {
         float flash = sin(inTransition * 3.14159);
         col += beaconColor * flash * 2.5;
       }
     }
 
-    // === INTRO GRID (cubic only, multiplying outward) ===
+    // === INTRO GRID (cubic only) ===
     if (iIntroProgress > 0.15 && introComplete < 1.0) {
       float spacing = 2.2;
       float t = 0.2;
@@ -192,23 +323,20 @@ const fragmentShader = `
       }
     }
 
-    // === JOURNEY GRIDS (after intro, with geometry changes) ===
-    if (introComplete > 0.0) {
+    // === JOURNEY GRIDS (phases 0-3) ===
+    if (introComplete > 0.0 && currentPhase < 4) {
       float spacing = getSpacing(currentPhase);
       float t = 0.2;
       float maxDist = 60.0;
 
       for(int i = 0; i < 48; i++) {
-        // Motion offset - moves viewer forward through grid toward beacon
         vec3 motionOffset = vec3(0.0, 0.0, -forwardMotion);
         vec3 p = rd * t + motionOffset;
 
         vec3 cellId;
         float d;
         float h;
-        float shellAngle = 0.0;
 
-        // === GEOMETRY PER PHASE ===
         if (currentPhase == 0) {
           // CUBIC
           cellId = floor(p / spacing);
@@ -229,21 +357,7 @@ const fragmentShader = `
           h = hash(cellId);
         }
         else if (currentPhase == 2) {
-          // SPHERICAL SHELLS - neon ring style
-          float radius = length(p);
-          float shellId = floor(radius / spacing);
-          float shellQ = mod(radius, spacing) - spacing * 0.5;
-          float theta = atan(p.z, p.x);
-          float phi = asin(clamp(p.y / max(radius, 0.01), -1.0, 1.0));
-          cellId = vec3(shellId, floor(theta * 3.0), floor(phi * 4.0));
-          // Tighter ring effect
-          d = abs(shellQ) * 0.6;
-          h = hash(cellId);
-          // Store angle for color cycling
-          shellAngle = theta + phi * 2.0;
-        }
-        else if (currentPhase == 3) {
-          // VERTICAL PILLARS
+          // VERTICAL PILLARS (was phase 3)
           vec2 pillarCell = floor(p.xz / spacing);
           vec2 pillarQ = mod(p.xz, spacing) - spacing * 0.5;
           float vCell = floor(p.y / 1.5);
@@ -253,8 +367,8 @@ const fragmentShader = `
           d = length(vec2(pillarDist, vQ));
           h = hash(cellId);
         }
-        else if (currentPhase == 4) {
-          // DIAMOND LATTICE
+        else {
+          // DIAMOND LATTICE (was phase 4)
           vec3 offset = vec3(0.0);
           float layer = floor(p.y / spacing);
           if (mod(layer, 2.0) > 0.5) offset.xz = vec2(spacing * 0.5);
@@ -264,56 +378,10 @@ const fragmentShader = `
           d = (abs(q.x) + abs(q.y) + abs(q.z)) * 0.5;
           h = hash(cellId);
         }
-        else {
-          // PHASE 5: WARP THROUGH THE VOID
-          // Lights move TOWARD user, short lifespans, darkness with bright flashes
-
-          // Use spherical coordinates for omnidirectional spawning
-          float theta = atan(p.z, p.x);
-          float phi = asin(clamp(p.y / max(length(p), 0.01), -1.0, 1.0));
-          float dist = length(p);
-
-          // Time-based cell that creates movement toward viewer
-          float speed = 4.0; // Fast movement
-          float movingDist = dist + phaseTime * speed;
-
-          // Sparse, random cell distribution
-          float cellSize = 3.5;
-          cellId = vec3(
-            floor(theta * 3.0 + sin(phi * 5.0) * 0.5),
-            floor(phi * 4.0 + cos(theta * 3.0) * 0.5),
-            floor(movingDist / cellSize)
-          );
-
-          h = hash(cellId);
-          float h4 = fract(h * 531.7);
-
-          // Lifespan: each light appears, brightens, fades (2-4 second cycle)
-          float lifespan = 2.0 + h * 2.0;
-          float birthTime = h4 * lifespan;
-          float localTime = mod(phaseTime + birthTime, lifespan);
-          float lifeFade = sin(localTime / lifespan * 3.14159); // Smooth in-out
-
-          // Only ~40% of cells have visible lights (darkness)
-          float spawnChance = step(0.6, h);
-          lifeFade *= spawnChance;
-
-          // Distance within cell
-          float cellDist = mod(movingDist, cellSize);
-          d = abs(cellDist - cellSize * 0.5) * 0.4;
-
-          // Streak effect: elongate based on speed
-          float streak = smoothstep(0.8, 0.0, abs(cellDist - cellSize * 0.5) / cellSize);
-          d = mix(d, d * 0.3, streak * 0.5);
-
-          // Store lifeFade in h for use in lighting
-          h = lifeFade;
-        }
 
         float h2 = fract(h * 127.1);
         float h3 = fract(h * 311.7);
 
-        // Skip origin
         if (length(cellId) < 0.5 && forwardMotion < 2.0) {
           t += 0.5;
           continue;
@@ -324,56 +392,14 @@ const fragmentShader = `
         float glow = lightSize / (d + 0.02);
         float light = core + glow * glow * 0.4;
 
-        // Enhanced neon glow for phase 2
-        if (currentPhase == 2) {
-          float neonGlow = exp(-d * d * 8.0) * 2.0;
-          float pulse = sin(iTime * 1.5 + shellAngle) * 0.3 + 1.0;
-          light = (core * 1.5 + glow * glow * 0.6 + neonGlow) * pulse;
-        }
-
-        // Phase 5: Warp void special lighting
-        if (currentPhase == 5) {
-          // h contains lifeFade for this phase
-          float lifeFade = h;
-
-          // Bright flash glow
-          float warpGlow = exp(-d * d * 15.0) * 3.0;
-          float streakGlow = exp(-d * 3.0) * 1.5;
-          light = (warpGlow + streakGlow) * lifeFade;
-
-          // Occasional bright beacon flashes
-          if (h3 > 0.92) {
-            light *= 3.0; // Extra bright beacons
-          }
-        }
-
         light *= (0.7 + h3 * 0.5) / (1.0 + t * 0.025);
 
-        // Visibility
         float cellDist = length(cellId) * spacing;
         float reveal = smoothstep(maxDist, maxDist - 10.0, cellDist);
         light *= reveal * gridVisibility * introComplete;
 
-        // Color
-        vec3 lightColor = getGridColor(currentPhase, h2, shellAngle, iTime);
+        vec3 lightColor = getGridColor(currentPhase, h2);
 
-        // Phase 5: Multi-color from all previous phases
-        if (currentPhase == 5) {
-          // Cycle through all phase colors based on cell hash
-          int colorPhase = int(mod(h2 * 6.0, 5.0));
-          if (colorPhase == 0) lightColor = vec3(1.0, 0.15, 0.1);       // Red
-          else if (colorPhase == 1) lightColor = vec3(0.1, 0.9, 0.4);   // Emerald
-          else if (colorPhase == 2) lightColor = vec3(0.3, 0.9, 1.0);   // Cyan
-          else if (colorPhase == 3) lightColor = vec3(1.0, 0.75, 0.2);  // Golden
-          else lightColor = vec3(0.7, 0.2, 0.9);                         // Amethyst
-
-          // Add white core to bright beacons
-          if (h3 > 0.92) {
-            lightColor = mix(lightColor, vec3(1.0), 0.5);
-          }
-        }
-
-        // Tint toward beacon near horizon
         float forwardness = smoothstep(0.2, -0.6, rd.z);
         float horizonProx = smoothstep(0.4, 0.0, abs(rd.y));
         lightColor = mix(lightColor, getBeaconColor(currentPhase), forwardness * horizonProx * 0.4);
@@ -385,33 +411,14 @@ const fragmentShader = `
       }
     }
 
-    // === PHASE 5: PULSE WAVE RINGS ===
+    // === PHASE 4: PALETTE SHADER ===
+    if (currentPhase == 4 && introComplete > 0.0) {
+      col += renderPalettePhase(rd, iTime, gridVisibility * introComplete);
+    }
+
+    // === PHASE 5: TORUS MATRIX ===
     if (currentPhase == 5 && introComplete > 0.0) {
-      // Multiple expanding rings from random origins
-      for (int w = 0; w < 4; w++) {
-        float waveOffset = float(w) * 23.7;
-        float waveTime = mod(phaseTime + waveOffset, 12.0); // 12 second cycle per wave
-
-        // Ring expands outward then fades
-        float ringRadius = waveTime * 8.0; // Expansion speed
-        float ringFade = 1.0 - smoothstep(8.0, 12.0, waveTime);
-
-        // Distance from viewer to ring
-        float viewerDist = length(rd * ringRadius);
-        float ringDist = abs(length(vWorldPosition * 0.1) - ringRadius * 0.3);
-
-        // Thin glowing ring
-        float ringGlow = exp(-ringDist * ringDist * 2.0) * ringFade * 0.4;
-
-        // Ring color cycles
-        vec3 ringColor;
-        if (w == 0) ringColor = vec3(1.0, 0.2, 0.3);
-        else if (w == 1) ringColor = vec3(0.2, 0.9, 0.5);
-        else if (w == 2) ringColor = vec3(0.3, 0.5, 1.0);
-        else ringColor = vec3(1.0, 0.8, 0.2);
-
-        col += ringColor * ringGlow * gridVisibility;
-      }
+      col += renderTorusPhase(rd, iTime, gridVisibility * introComplete, vWorldPosition);
     }
 
     // Apply brightness
@@ -451,7 +458,8 @@ export function InfiniteLightShader({
     iTime: { value: 0 },
     iBrightness: { value: brightness },
     iIntroProgress: { value: introProgress },
-    iColorShift: { value: colorShift }
+    iColorShift: { value: colorShift },
+    iResolution: { value: new THREE.Vector2(1920, 1080) }
   }), []);
 
   useFrame((state) => {
