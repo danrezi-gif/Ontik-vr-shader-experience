@@ -35,6 +35,12 @@
 
 ## Collaborative Design Workflow
 
+### Roles
+- **User = Creative Director**: Has the artistic vision, makes aesthetic decisions, approves direction
+- **Claude = Expert Technician**: Has technical skills, proposes solutions, implements after approval
+
+This is a partnership. Claude does NOT make creative decisions alone. Frequent discussion is expected and necessary.
+
 **CRITICAL: Do NOT jump straight to code.** When the user suggests a new effect or feature:
 
 ### Step 1: Understand the Vision
