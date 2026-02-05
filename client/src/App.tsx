@@ -351,7 +351,8 @@ const globalAudio = {
   currentTrack: null as string | null,
   initialized: false,
   convolver: null as ConvolverNode | null,
-  reverbGain: null as GainNode | null
+  reverbGain: null as GainNode | null,
+  playbackStartTime: null as number | null // Track when playback actually started
 };
 
 // Shaders that use positional audio from a specific location
@@ -502,11 +503,13 @@ function playTrackForShader(shaderId: string) {
   if (ctx.state === 'suspended') {
     ctx.resume().then(() => {
       activeAudio.play();
-      console.log('Playing track for:', shaderId, isPositional ? '(positional + reverb)' : '(standard)');
+      globalAudio.playbackStartTime = ctx.currentTime;
+      console.log('Playing track for:', shaderId, isPositional ? '(positional + reverb)' : '(standard)', 'at context time:', ctx.currentTime);
     });
   } else {
     activeAudio.play();
-    console.log('Playing track for:', shaderId, isPositional ? '(positional + reverb)' : '(standard)');
+    globalAudio.playbackStartTime = ctx.currentTime;
+    console.log('Playing track for:', shaderId, isPositional ? '(positional + reverb)' : '(standard)', 'at context time:', ctx.currentTime);
   }
 }
 
@@ -715,11 +718,10 @@ function AudioTimeTracker({ onTimeUpdate }: AudioTimeTrackerProps) {
       ? globalAudio.positionalAudio
       : globalAudio.audio;
 
-    if (audio && audio.isPlaying && audio.buffer) {
+    if (audio && audio.isPlaying && audio.buffer && globalAudio.playbackStartTime !== null) {
       // Calculate current time based on context time and when playback started
       const context = audio.context;
-      const offset = (audio as any)._startedAt || 0;
-      const currentTime = context.currentTime - offset;
+      const currentTime = context.currentTime - globalAudio.playbackStartTime;
       onTimeUpdate(Math.max(0, currentTime));
     }
   });
@@ -862,8 +864,9 @@ function App() {
         // May already be disconnected
       }
     }
-    // Clear current track to allow re-entry
+    // Clear current track and reset playback time to allow re-entry
     globalAudio.currentTrack = null;
+    globalAudio.playbackStartTime = null;
     setMusicStarted(false);
 
     setSelectedShader(null);
