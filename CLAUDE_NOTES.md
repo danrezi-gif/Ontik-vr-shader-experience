@@ -1,5 +1,13 @@
 # Claude Development Notes - Ascension Experience
 
+## WORKFLOW RULES - READ FIRST
+1. **ASK before running build/lint** - Never auto-build
+2. **Read this file first** when starting a new session
+3. **Update this file** after making changes to preserve context
+4. **Confirm before major actions** - commits, builds, large edits
+
+---
+
 ## Current Focus: SacredVesselsShader.tsx (The Ascension)
 
 ### What We've Done
