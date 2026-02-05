@@ -47,6 +47,54 @@
 2. Then implement simpler alternative
 3. Don't try to fix broken complex code - simplify instead
 
+## Layer-Based Shader Development
+
+When building or modifying shader effects, use a **layer approach** for maximum creative control:
+
+### Principle
+Each visual effect should be an **independent, additive layer** that can be:
+- Toggled on/off without affecting other layers
+- Adjusted independently (intensity, color, timing)
+- Removed completely without rewriting surrounding code
+
+### Implementation Pattern
+```glsl
+// In fragment shader:
+vec3 col = vec3(0.0);  // Start with black (or base)
+
+// Layer 1: Streams (always on for testing)
+vec3 streamsLayer = calculateStreams(uv, time);
+col += streamsLayer;
+
+// Layer 2: Fog (toggleable)
+// float fogEnabled = 1.0;  // Set to 0.0 to disable
+// vec3 fogLayer = calculateFog(uv, time) * fogEnabled;
+// col += fogLayer;
+
+// Layer 3: Glow (toggleable)
+// vec3 glowLayer = calculateGlow(uv, time);
+// col += glowLayer;
+```
+
+### Workflow
+1. **Start bare bones** - only essential elements visible
+2. **Add one layer** - test it in isolation
+3. **If it works** - keep it, move to next layer
+4. **If it doesn't work** - comment it out or delete, no damage done
+5. **Iterate** - adjust parameters until happy
+
+### Benefits
+- No fear of breaking what works
+- Easy A/B comparison (toggle layer on/off)
+- Clear separation of concerns
+- Quick rollback (comment out one section)
+
+### Example: Ascension Testing
+The `AscensionTestingShader` follows this pattern:
+- Base: flowing vertical streams only
+- Future layers can be added one at a time
+- Each layer is self-contained in the shader code
+
 ## Project-Specific Notes
 
 - The Mirror of Lights shader (abstract-waves) is the focus
