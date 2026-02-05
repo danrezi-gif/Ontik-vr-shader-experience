@@ -258,41 +258,25 @@ const fragmentShader = `
       overallProgress = smoothstep(phase1Start, phase4Start + 30.0, iAudioTime);
     }
 
-    // Progressive fog expansion - starts 0, grows with phases
-    float fogExpansion = 0.0;
-    if (iAudioTime > phase1Start) {
-      fogExpansion = smoothstep(0.0, 30.0, iAudioTime - phase1Start) * 0.3; // Phase 1: top only
-    }
-    if (iAudioTime > phase2Start) {
-      fogExpansion += smoothstep(0.0, 20.0, iAudioTime - phase2Start) * 0.3; // Phase 2: mid
-    }
-    if (iAudioTime > phase3Start) {
-      fogExpansion += smoothstep(0.0, 30.0, iAudioTime - phase3Start) * 0.4; // Phase 3: full envelope
-    }
-
-    // Phase 1: First golden emergence (143s - 173s) with descending fog
+    // Phase 1: First golden emergence (143s - 173s) - subtle golden glow (no spreading fog)
     if (iAudioTime > phase1Start && iAudioTime < phase1End) {
       float fadeIn = smoothstep(0.0, 8.0, iAudioTime - phase1Start);
       float fadeOut = 1.0 - smoothstep(phase1End - 8.0, phase1End, iAudioTime);
       float presenceIntensity = fadeIn * fadeOut;
 
-      // Golden fog descending from above - 360 degree coverage
-      float fogHeight = mix(0.9, 0.4, smoothstep(0.0, 25.0, iAudioTime - phase1Start));
-      float goldenFog = smoothstep(fogHeight - 0.3, fogHeight + 0.2, uv.y) * presenceIntensity;
-
-      // Add golden center glow
+      // Golden center glow only (no descending fog)
       float goldenCenter = exp(-length(vec2(uv.x * 0.5, uv.y - 0.5)) * 1.2);
       float wave = sin(length(vec2(uv.x, uv.y)) * 8.0 - iTime * 2.0) * 0.5 + 0.5;
       float breath = sin(iTime * 0.8) * 0.3 + 0.7;
 
-      float goldenAmount = (goldenFog + goldenCenter * 0.6 + wave * 0.15) * presenceIntensity * breath;
+      float goldenAmount = (goldenCenter * 0.5 + wave * 0.1) * presenceIntensity * breath;
 
       vec3 goldenColor = vec3(1.0, 0.85, 0.4);
       vec3 whiteCore = vec3(1.0, 0.98, 0.9);
       vec3 divineGold = mix(goldenColor, whiteCore, goldenCenter * presenceIntensity);
 
-      col += divineGold * goldenAmount * 2.2;
-      col = mix(col, col * vec3(1.2, 1.1, 0.8), presenceIntensity * 0.5);
+      col += divineGold * goldenAmount * 1.5;
+      col = mix(col, col * vec3(1.15, 1.08, 0.85), presenceIntensity * 0.3);
 
       // === MULTICOLORED CATHEDRAL GLOWS - start 8s after golden ===
       float multiColorStart = phase1Start + 8.0;
@@ -346,22 +330,15 @@ const fragmentShader = `
       }
     }
 
-    // Phase 2: Second golden emergence with 360 degree rays + color hints (183s - 210s)
+    // Phase 2: Second golden emergence with 360 degree rays (183s - 210s)
     if (iAudioTime > phase2Start && iAudioTime < phase2End) {
       float fadeIn = smoothstep(0.0, 6.0, iAudioTime - phase2Start);
       float fadeOut = 1.0 - smoothstep(phase2End - 6.0, phase2End, iAudioTime);
       float intensity2 = fadeIn * fadeOut;
 
-      // Golden fog now at mid-height, surrounding user - MORE INTENSE
-      float midFog = smoothstep(-0.3, 0.7, uv.y) * smoothstep(1.0, 0.2, uv.y);
-      vec3 goldenMidFog = vec3(1.0, 0.88, 0.55) * midFog * intensity2 * 0.5;
-
-      // Add subtle color hints in the golden fog
-      float colorHint = sin(theta * 3.0 + iTime * 0.2) * 0.5 + 0.5;
-      vec3 hintColor = mix(vec3(1.0, 0.7, 0.5), vec3(0.9, 0.8, 1.0), colorHint);
-      goldenMidFog = mix(goldenMidFog, goldenMidFog * hintColor, 0.3);
-
-      col += goldenMidFog;
+      // Subtle golden ambient (no heavy fog)
+      float goldenAmbient = exp(-length(vec2(uv.x * 0.3, uv.y - 0.6)) * 0.8) * intensity2 * 0.2;
+      col += vec3(1.0, 0.9, 0.6) * goldenAmbient;
 
       // 360 degree golden rays using theta
       float goldenRays = 0.0;
@@ -390,36 +367,14 @@ const fragmentShader = `
       col = mix(col, col * vec3(1.35, 1.15, 0.8), intensity2 * 0.65);
     }
 
-    // Phase 3: Cathedral stained glass - 360 DEGREES with INTENSE COLORED FOG (220s+)
+    // Phase 3: Cathedral stained glass - 360 DEGREE COLORED RAYS (220s+)
+    // Cotton candy clouds handle the colored fog atmosphere
     if (iAudioTime > phase3Start) {
       float fadeIn = smoothstep(0.0, 15.0, iAudioTime - phase3Start);
-      float deepFadeIn = smoothstep(0.0, 30.0, iAudioTime - phase3Start); // Slower for fog intensity
 
-      // === GOLDEN + COLORED FOG ENVELOPE ===
-      // Base golden fog that fills the space
-      float goldenFogMask = smoothstep(-0.6, 0.7, uv.y) * deepFadeIn;
-      vec3 goldenFogBase = vec3(1.0, 0.88, 0.55) * goldenFogMask * 0.4;
-
-      // Add swirling colored fog on top of golden
-      vec3 coloredFog = vec3(0.0);
-      for(float cf = 0.0; cf < 6.0; cf++) {
-        float fogAngle = cf * 1.047 + iTime * 0.02;
-        float fogTheta = theta - fogAngle;
-        float fogWave = sin(fogTheta * 2.0 + uv.y * 3.0 + iTime * 0.3) * 0.5 + 0.5;
-
-        vec3 fogColor;
-        if (cf < 1.0) fogColor = vec3(0.95, 0.3, 0.4); // Ruby fog
-        else if (cf < 2.0) fogColor = vec3(0.3, 0.5, 0.95); // Sapphire fog
-        else if (cf < 3.0) fogColor = vec3(0.95, 0.85, 0.3); // Gold fog
-        else if (cf < 4.0) fogColor = vec3(0.3, 0.9, 0.5); // Emerald fog
-        else if (cf < 5.0) fogColor = vec3(0.8, 0.4, 0.9); // Amethyst fog
-        else fogColor = vec3(0.95, 0.6, 0.3); // Amber fog
-
-        coloredFog += fogColor * fogWave * 0.12 * deepFadeIn;
-      }
-
-      // Combine golden base with colored swirls
-      col += goldenFogBase + coloredFog;
+      // Subtle warm ambient only (cotton candy clouds provide the colorful atmosphere)
+      float warmAmbient = exp(-length(vec2(uv.x * 0.2, uv.y - 0.5)) * 0.5) * fadeIn * 0.15;
+      col += vec3(1.0, 0.92, 0.75) * warmAmbient;
 
       // === 360 DEGREE COLORED RAYS - MORE INTENSE ===
       vec3 vitralCol = vec3(0.0);
@@ -454,32 +409,29 @@ const fragmentShader = `
       vitralCol *= saturationBoost;
       col = mix(col, col + vitralCol, fadeIn);
 
-      // Golden-tinted ambient glow from all around
-      vec3 ambientGlow = vec3(0.5, 0.4, 0.3) * 0.3;
+      // Subtle warm ambient glow
+      vec3 ambientGlow = vec3(0.4, 0.35, 0.3) * 0.2;
       col += ambientGlow * fadeIn;
-
-      // Extra bloom/glow effect as fog deepens
-      col = mix(col, col * 1.2, deepFadeIn * 0.3);
     }
 
-    // Phase 4: Final immersion - MULTICOLORED CATHEDRAL CRESCENDO (260s+)
-    // NOT white-out, but peak colored fog with golden depths
+    // Phase 4: Final immersion - PEAK COLORED RAYS (260s+)
+    // Cotton candy clouds handle the colorful atmosphere
     if (iAudioTime > phase4Start) {
       float finalProgress = smoothstep(0.0, 50.0, iAudioTime - phase4Start);
 
-      // === INTENSIFIED CATHEDRAL COLORS - PEAK SATURATION ===
+      // === INTENSIFIED CATHEDRAL COLOR RAYS ===
       vec3 cathedralPeak = vec3(0.0);
       for(float f = 0.0; f < 12.0; f++) {
         float burstAngle = f * 0.524 + iTime * 0.06;
         float burstTheta = theta - burstAngle;
         float burstDist = abs(sin(burstTheta * 0.5));
-        float burst = exp(-burstDist * burstDist * 12.0);
+        float burst = exp(-burstDist * burstDist * 15.0);
 
-        // Vertical spread - colors fill entire space
-        float verticalFill = smoothstep(-0.8, 0.9, uv.y);
+        // Vertical spread for rays
+        float verticalFill = smoothstep(-0.6, 0.85, uv.y);
         burst *= verticalFill;
 
-        // Peak intensity cathedral colors
+        // Peak intensity cathedral ray colors
         vec3 burstColor;
         float colorIdx = mod(f, 6.0);
         if (colorIdx < 1.0) burstColor = vec3(1.0, 0.2, 0.35); // Ruby
@@ -489,46 +441,16 @@ const fragmentShader = `
         else if (colorIdx < 5.0) burstColor = vec3(0.9, 0.3, 1.0); // Amethyst
         else burstColor = vec3(1.0, 0.6, 0.25); // Amber
 
-        cathedralPeak += burstColor * burst * 0.35;
+        cathedralPeak += burstColor * burst * 0.25;
       }
 
-      // === COLORED FOG FILLING THE SPACE ===
-      vec3 coloredFogFinal = vec3(0.0);
-      for(float cf = 0.0; cf < 8.0; cf++) {
-        float fogAngle = cf * 0.785 + iTime * 0.025;
-        float fogTheta = theta - fogAngle;
-        float fogWave = sin(fogTheta * 1.5 + uv.y * 2.0 + iTime * 0.2) * 0.5 + 0.5;
-        fogWave = pow(fogWave, 0.7); // Softer, more fog-like
+      // Subtle warm glow (cotton candy clouds provide the atmosphere)
+      vec3 warmGlow = vec3(1.0, 0.92, 0.75) * finalProgress * 0.15;
 
-        vec3 fogColor;
-        float colorIdx = mod(cf, 6.0);
-        if (colorIdx < 1.0) fogColor = vec3(0.9, 0.35, 0.45);
-        else if (colorIdx < 2.0) fogColor = vec3(0.35, 0.5, 0.9);
-        else if (colorIdx < 3.0) fogColor = vec3(0.9, 0.8, 0.35);
-        else if (colorIdx < 4.0) fogColor = vec3(0.35, 0.85, 0.5);
-        else if (colorIdx < 5.0) fogColor = vec3(0.8, 0.4, 0.85);
-        else fogColor = vec3(0.9, 0.6, 0.35);
+      col += cathedralPeak + warmGlow;
 
-        coloredFogFinal += fogColor * fogWave * 0.18;
-      }
-
-      // === GOLDEN GLOW PERMEATING EVERYTHING ===
-      vec3 goldenPermeation = vec3(1.0, 0.88, 0.5) * 0.35;
-
-      // Combine: cathedral rays + colored fog + golden warmth
-      vec3 finalAtmosphere = cathedralPeak + coloredFogFinal * finalProgress + goldenPermeation * finalProgress;
-
-      // Intensity builds to overwhelming
-      float intensityBuild = 1.0 + finalProgress * 0.8;
-      finalAtmosphere *= intensityBuild;
-
-      // Soft luminous haze that doesn't obscure colors - warm white tint, not pure white
-      vec3 luminousHaze = vec3(1.0, 0.95, 0.88) * finalProgress * 0.25;
-
-      col += finalAtmosphere + luminousHaze;
-
-      // Boost saturation at the peak
-      float satBoost = 1.0 + finalProgress * 0.4;
+      // Gentle saturation boost
+      float satBoost = 1.0 + finalProgress * 0.25;
       col = mix(vec3(dot(col, vec3(0.299, 0.587, 0.114))), col, satBoost);
     }
 
@@ -591,16 +513,75 @@ const fragmentShader = `
     // Apply inferior pole - darkness at start, golden during phases
     col = mix(col, depthColor, inferiorPole);
 
-    // === SUPERIOR POLE - STAR APEX ALREADY HANDLES THIS ===
-    // Just add subtle fog expansion for atmosphere (star handles the seam hiding)
-    float basePoleSize = 0.92; // Star handles the very top
-    float expandedPoleSize = mix(basePoleSize, 0.5, fogExpansion);
+    // === SUPERIOR POLE - MINIMAL FOG JUST TO HIDE VERTEX ===
+    // Keep fog tight around the apex where streams converge
+    float poleFogSize = 0.94; // Only very close to apex
+    float superiorPole = smoothstep(poleFogSize, 0.98, rd.y);
 
-    float superiorPole = smoothstep(expandedPoleSize, 0.96, rd.y);
+    // Very subtle, low opacity fog - just enough to hide the convergence point
+    vec3 poleFogColor = vec3(0.9, 0.92, 1.0); // Subtle blue-white
+    col = mix(col, poleFogColor, superiorPole * 0.15); // Very low opacity
 
-    // Fog color shifts from subtle to golden-white with phases
-    vec3 poleFogColor = mix(vec3(0.1, 0.12, 0.15), vec3(1.0, 0.95, 0.85), fogExpansion);
-    col = mix(col, poleFogColor, superiorPole * (0.2 + fogExpansion * 0.6));
+    // === MULTICOLORED COTTON CANDY CLOUDS ===
+    // Soft, ethereal colored fog volumes surrounding the user
+    if (iAudioTime > phase1Start) {
+      float cloudsFadeIn = smoothstep(0.0, 15.0, iAudioTime - phase1Start);
+      float cloudsIntensity = cloudsFadeIn * 0.25; // Lower base opacity
+
+      // Intensify through phases
+      if (iAudioTime > phase2Start) {
+        cloudsIntensity = mix(0.25, 0.35, smoothstep(0.0, 20.0, iAudioTime - phase2Start));
+      }
+      if (iAudioTime > phase3Start) {
+        cloudsIntensity = mix(0.35, 0.45, smoothstep(0.0, 25.0, iAudioTime - phase3Start));
+      }
+
+      vec3 cottonCandyClouds = vec3(0.0);
+
+      // 8 different colored cloud volumes
+      for(float c = 0.0; c < 8.0; c++) {
+        // Each cloud has its own orbit position
+        float cloudOrbitAngle = c * 0.785 + iTime * 0.015 * (1.0 + c * 0.1);
+        float cloudVerticalOffset = sin(iTime * 0.08 + c * 1.2) * 0.15;
+
+        // 3D position in spherical space
+        float cloudTheta = theta - cloudOrbitAngle;
+        float cloudPhi = phi - cloudVerticalOffset;
+
+        // Soft volumetric cloud using layered noise
+        vec2 cloudUV = vec2(cloudTheta * 0.8, cloudPhi * 1.2 + iTime * 0.02);
+        float cloudNoise1 = fbm(cloudUV * 2.0 + c * 3.7);
+        float cloudNoise2 = fbm(cloudUV * 1.3 + c * 2.1 + vec2(iTime * 0.03, 0.0));
+        float cloudNoise = mix(cloudNoise1, cloudNoise2, 0.5);
+
+        // Soft cloud shape - cotton candy texture
+        float cloudShape = smoothstep(0.35, 0.7, cloudNoise);
+        cloudShape *= smoothstep(1.5, 0.0, abs(cloudTheta)); // Fade at edges
+        cloudShape *= smoothstep(1.2, 0.0, abs(cloudPhi - 0.2)); // Vertical bounds
+
+        // Stained glass cathedral colors
+        vec3 cloudColor;
+        if (c < 1.0) cloudColor = vec3(0.95, 0.25, 0.35);       // Ruby
+        else if (c < 2.0) cloudColor = vec3(0.2, 0.5, 0.95);    // Sapphire
+        else if (c < 3.0) cloudColor = vec3(0.15, 0.9, 0.85);   // Cyan/Teal
+        else if (c < 4.0) cloudColor = vec3(0.95, 0.4, 0.85);   // Magenta/Pink
+        else if (c < 5.0) cloudColor = vec3(0.2, 0.9, 0.4);     // Emerald
+        else if (c < 6.0) cloudColor = vec3(0.95, 0.75, 0.2);   // Amber/Gold
+        else if (c < 7.0) cloudColor = vec3(0.8, 0.3, 0.95);    // Violet/Purple
+        else cloudColor = vec3(0.95, 0.55, 0.25);               // Orange
+
+        // Soft glow around cloud centers
+        float cloudGlow = exp(-length(vec2(cloudTheta, (cloudPhi - 0.2) * 0.8)) * 1.5) * 0.4;
+
+        // Gentle breathing per cloud
+        float cloudBreath = sin(iTime * 0.4 + c * 0.9) * 0.15 + 0.85;
+
+        cottonCandyClouds += cloudColor * (cloudShape + cloudGlow) * cloudBreath;
+      }
+
+      // Apply clouds with translucent blending
+      col += cottonCandyClouds * cloudsIntensity * cloudsFadeIn;
+    }
 
     // Apply brightness and intro
     col *= iBrightness * iIntroProgress;
