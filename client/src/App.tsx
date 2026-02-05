@@ -430,21 +430,44 @@ function playTrackForShader(shaderId: string) {
   if (!activeAudio) return;
 
   // If same track is already playing on correct audio type, don't restart
+  // But ONLY if it's actually playing (check both flag and context state)
   if (globalAudio.currentTrack === shaderId && activeAudio.isPlaying) {
-    return;
+    const ctx = globalAudio.listener.context;
+    if (ctx.state === 'running') {
+      return; // Actually playing, don't restart
+    }
+    // Context suspended or audio not truly playing - continue to restart
   }
 
-  // Stop both audio types
-  if (globalAudio.audio?.isPlaying) {
-    globalAudio.audio.stop();
+  // Stop both audio types and disconnect to ensure clean state
+  if (globalAudio.audio) {
+    if (globalAudio.audio.isPlaying) {
+      globalAudio.audio.stop();
+    }
+    try {
+      globalAudio.audio.disconnect();
+    } catch (e) {
+      // May already be disconnected
+    }
   }
-  if (globalAudio.positionalAudio?.isPlaying) {
-    globalAudio.positionalAudio.stop();
+  if (globalAudio.positionalAudio) {
+    if (globalAudio.positionalAudio.isPlaying) {
+      globalAudio.positionalAudio.stop();
+    }
+    try {
+      globalAudio.positionalAudio.disconnect();
+    } catch (e) {
+      // May already be disconnected
+    }
   }
 
   // Set new buffer
   activeAudio.setBuffer(buffer);
   globalAudio.currentTrack = shaderId;
+
+  // Reset gain to full volume (may have been faded during previous experience ending)
+  const baseVolume = isPositional ? 1.5 : 0.3;
+  activeAudio.setVolume(baseVolume);
 
   // Connect reverb for positional audio with shader-specific intensity
   if (isPositional && globalAudio.convolver && globalAudio.reverbGain) {
@@ -812,13 +835,34 @@ function App() {
       session.end();
     }
 
-    // Stop all audio when leaving VR
-    if (globalAudio.audio?.isPlaying) {
-      globalAudio.audio.stop();
+    // Stop all audio when leaving VR - PROPERLY reset state
+    if (globalAudio.audio) {
+      if (globalAudio.audio.isPlaying) {
+        globalAudio.audio.stop();
+      }
+      // Reset gain to full volume (may have been faded)
+      globalAudio.audio.setVolume(0.3);
+      // Disconnect to ensure clean state
+      try {
+        globalAudio.audio.disconnect();
+      } catch (e) {
+        // May already be disconnected
+      }
     }
-    if (globalAudio.positionalAudio?.isPlaying) {
-      globalAudio.positionalAudio.stop();
+    if (globalAudio.positionalAudio) {
+      if (globalAudio.positionalAudio.isPlaying) {
+        globalAudio.positionalAudio.stop();
+      }
+      // Reset gain to full volume (may have been faded)
+      globalAudio.positionalAudio.setVolume(1.5);
+      // Disconnect to ensure clean state
+      try {
+        globalAudio.positionalAudio.disconnect();
+      } catch (e) {
+        // May already be disconnected
+      }
     }
+    // Clear current track to allow re-entry
     globalAudio.currentTrack = null;
     setMusicStarted(false);
 
@@ -832,13 +876,19 @@ function App() {
   }, []);
 
   // Auto-return to menu after infinite-light experience ends
-  // Total duration: intro (35s) + journey delay (5s) + 4 phases (4×48=192s) + tunnel (40s) = 272s
+  // Duration: intro (35s) + journey delay (5s) + 4 phases (4×96=384s) = 424s total
+  // White ending starts 12s before phase 3 ends, hold for 10s, then fade and return
   const experienceEndTimeRef = useRef<number | null>(null);
+  const musicFadeStartedRef = useRef<boolean>(false);
   useEffect(() => {
     if (selectedShader !== 'infinite-light' || !introComplete) return;
 
-    // Calculate experience end time: journey starts at 5s after intro, phases take 192s, tunnel takes 40s
-    const EXPERIENCE_DURATION = 5 + (48 * 4) + 40; // 237 seconds from intro complete
+    // Phase 3 ends at: 5 + (96 × 4) = 389 seconds from intro complete
+    // White ending starts 12s before phase 3 ends: 389 - 12 = 377 seconds
+    // Hold white for 10 seconds: 377 + 12 + 10 = 399 seconds
+    const WHITE_ENDING_START = 5 + (96 * 4) - 12; // 377 seconds - when white expansion begins
+    const MUSIC_FADE_START = WHITE_ENDING_START + 5; // Start fading music 5s into white
+    const EXPERIENCE_END = WHITE_ENDING_START + 22; // 10s of white hold after initial expansion
 
     const checkExperienceEnd = () => {
       if (!experienceEndTimeRef.current) {
@@ -847,30 +897,32 @@ function App() {
 
       const elapsed = (Date.now() - experienceEndTimeRef.current) / 1000;
 
-      if (elapsed >= EXPERIENCE_DURATION) {
-        // Fade out audio over 3 seconds
+      // Start fading music during white phase
+      if (elapsed >= MUSIC_FADE_START && !musicFadeStartedRef.current) {
+        musicFadeStartedRef.current = true;
         const audio = globalAudio.positionalAudio || globalAudio.audio;
         if (audio && audio.isPlaying) {
           const ctx = audio.context;
           const gainNode = audio.gain;
           gainNode.gain.setValueAtTime(gainNode.gain.value, ctx.currentTime);
-          gainNode.gain.linearRampToValueAtTime(0, ctx.currentTime + 3);
-
-          // Return to menu after fade completes
-          setTimeout(() => {
-            handleBack();
-          }, 3500);
-        } else {
-          handleBack();
+          gainNode.gain.linearRampToValueAtTime(0, ctx.currentTime + 12); // Slow 12s fade
+          console.log('Starting music fade out for Infinite Gateway ending');
         }
+      }
+
+      // Return to main after white hold
+      if (elapsed >= EXPERIENCE_END) {
+        console.log('Infinite Gateway experience complete, returning to main');
+        handleBack();
         return;
       }
     };
 
-    const interval = setInterval(checkExperienceEnd, 1000);
+    const interval = setInterval(checkExperienceEnd, 500);
     return () => {
       clearInterval(interval);
       experienceEndTimeRef.current = null;
+      musicFadeStartedRef.current = false;
     };
   }, [selectedShader, introComplete, handleBack]);
 

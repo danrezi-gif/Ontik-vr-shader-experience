@@ -293,6 +293,57 @@ const fragmentShader = `
 
       col += divineGold * goldenAmount * 2.2;
       col = mix(col, col * vec3(1.2, 1.1, 0.8), presenceIntensity * 0.5);
+
+      // === MULTICOLORED CATHEDRAL GLOWS - start 8s after golden ===
+      float multiColorStart = phase1Start + 8.0;
+      if (iAudioTime > multiColorStart) {
+        float multiColorFadeIn = smoothstep(0.0, 10.0, iAudioTime - multiColorStart);
+        float multiColorFadeOut = 1.0 - smoothstep(phase1End - 5.0, phase1End, iAudioTime);
+        float multiColorIntensity = multiColorFadeIn * multiColorFadeOut;
+
+        // 6 cathedral colors at different orbiting origins around the user
+        vec3 cathedralColors[6];
+        cathedralColors[0] = vec3(0.95, 0.25, 0.35);  // Ruby
+        cathedralColors[1] = vec3(0.2, 0.45, 0.95);   // Sapphire
+        cathedralColors[2] = vec3(0.2, 0.9, 0.45);    // Emerald
+        cathedralColors[3] = vec3(0.85, 0.3, 0.9);    // Amethyst
+        cathedralColors[4] = vec3(0.95, 0.55, 0.2);   // Amber
+        cathedralColors[5] = vec3(0.3, 0.85, 0.9);    // Teal
+
+        vec3 multiColorGlow = vec3(0.0);
+
+        for (int i = 0; i < 6; i++) {
+          float fi = float(i);
+          // Orbiting origin around user - each color at different angle, slowly moving
+          float orbitAngle = fi * 1.047 + iTime * 0.08 + fi * 0.5; // Different speeds
+          float orbitRadius = 0.35 + sin(iTime * 0.3 + fi * 1.5) * 0.1; // Breathing orbit
+
+          // Position in spherical coords (using theta for horizontal)
+          float orbitX = sin(orbitAngle) * orbitRadius;
+          float orbitY = 0.5 + cos(orbitAngle * 0.7 + fi) * 0.2; // Vertical drift
+
+          // Same algorithm as golden glow but at orbiting position
+          vec2 glowPos = vec2(uv.x - orbitX, uv.y - orbitY);
+          float colorGlow = exp(-length(glowPos * vec2(0.8, 1.0)) * 1.4);
+
+          // Wave pattern radiating from glow center
+          float colorWave = sin(length(glowPos) * 6.0 - iTime * 1.8 + fi * 0.8) * 0.5 + 0.5;
+
+          // Individual breathing offset per color
+          float colorBreath = sin(iTime * 0.7 + fi * 1.2) * 0.3 + 0.7;
+
+          float colorAmount = (colorGlow * 0.7 + colorWave * 0.2) * colorBreath * multiColorIntensity;
+
+          // Stagger appearance - each color fades in slightly later
+          float staggerDelay = fi * 1.5; // 1.5 seconds between each
+          float staggerFade = smoothstep(0.0, 3.0, iAudioTime - multiColorStart - staggerDelay);
+          colorAmount *= staggerFade;
+
+          multiColorGlow += cathedralColors[i] * colorAmount * 0.4;
+        }
+
+        col += multiColorGlow;
+      }
     }
 
     // Phase 2: Second golden emergence with 360 degree rays + color hints (183s - 210s)

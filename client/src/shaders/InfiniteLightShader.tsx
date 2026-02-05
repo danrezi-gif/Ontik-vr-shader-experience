@@ -31,10 +31,9 @@ const fragmentShader = `
     return fract((p.x + p.y) * p.z);
   }
 
-  // Phase timing - halved duration for each light
-  const float PHASE_DURATION = 48.0;
+  // Phase timing - original duration
+  const float PHASE_DURATION = 96.0;
   const float TRANSITION_TIME = 5.0;
-  const float TUNNEL_DURATION = 40.0;
 
   // Beacon colors
   vec3 getBeaconColor(int phase) {
@@ -84,104 +83,6 @@ const fragmentShader = `
     return 6.0;
   }
 
-  // === FLOWING TUNNEL SHADER (Phase 4) ===
-  vec3 palette(float t) {
-    vec3 a = vec3(0.5, 0.5, 0.5);
-    vec3 b = vec3(0.5, 0.5, 0.5);
-    vec3 c = vec3(1.0, 1.0, 1.0);
-    vec3 d = vec3(0.2, 0.4, 0.5);
-    return a + b * cos(2.0 * PI * (c * t + d));
-  }
-
-  vec3 renderTunnelPhase(vec3 rd, float time, float visibility, float tunnelProgress) {
-    // Tunnel coordinate system - looking forward into -Z
-    float angle = atan(rd.y, rd.x);
-    float radialDist = length(rd.xy);
-
-    // Create tunnel depth illusion based on view angle
-    float tunnelDepth = 1.0 / (radialDist + 0.1);
-
-    // Flowing motion through tunnel
-    float flow = time * 2.0;
-
-    // Create glowing rings that flow toward viewer
-    float ringFreq = 8.0;
-    float rings = sin((tunnelDepth * ringFreq - flow) * PI);
-    rings = smoothstep(0.3, 1.0, rings);
-
-    // Spiral glow pattern
-    float spiral = sin(angle * 3.0 + tunnelDepth * 4.0 - flow * 1.5);
-    spiral = spiral * 0.5 + 0.5;
-
-    // Color shifts as user travels through tunnel
-    float colorPhase = tunnelDepth * 0.3 - time * 0.15;
-    vec3 tunnelColor = palette(colorPhase + angle / (2.0 * PI));
-
-    // Glowing edges of tunnel
-    float edgeGlow = smoothstep(0.8, 0.2, radialDist);
-    float coreGlow = exp(-radialDist * radialDist * 3.0);
-
-    // Combine effects
-    float glow = (rings * 0.6 + spiral * 0.4) * edgeGlow + coreGlow * 0.5;
-
-    // Pulsing intensity
-    float pulse = 0.8 + 0.2 * sin(time * 3.0) + 0.1 * sin(time * 5.3);
-    glow *= pulse;
-
-    vec3 color = tunnelColor * glow * 2.0;
-
-    // === ENDING SEQUENCE (last 10 seconds of 40) ===
-    float endingStart = 30.0;
-    float endingProgress = smoothstep(endingStart, TUNNEL_DURATION, tunnelProgress * TUNNEL_DURATION);
-
-    if (endingProgress > 0.0) {
-      // Multiple glows appear from different directions
-      vec3 multiGlow = vec3(0.0);
-
-      // Glow 1 - from above
-      float glow1Dist = length(rd - vec3(0.0, 0.8, -0.6));
-      float glow1 = exp(-glow1Dist * glow1Dist * 8.0);
-      multiGlow += palette(0.0) * glow1;
-
-      // Glow 2 - from below left
-      float glow2Dist = length(rd - vec3(-0.7, -0.5, -0.5));
-      float glow2 = exp(-glow2Dist * glow2Dist * 8.0);
-      multiGlow += palette(0.33) * glow2;
-
-      // Glow 3 - from below right
-      float glow3Dist = length(rd - vec3(0.7, -0.5, -0.5));
-      float glow3 = exp(-glow3Dist * glow3Dist * 8.0);
-      multiGlow += palette(0.66) * glow3;
-
-      // Glow 4 - from center front
-      float glow4Dist = length(rd - vec3(0.0, 0.0, -1.0));
-      float glow4 = exp(-glow4Dist * glow4Dist * 6.0);
-      multiGlow += vec3(1.0, 0.95, 0.9) * glow4;
-
-      // Glows intensify
-      float glowIntensity = smoothstep(0.0, 0.5, endingProgress) * 3.0;
-      multiGlow *= glowIntensity;
-
-      // All glows converge and transform to white
-      float whiteTransition = smoothstep(0.6, 1.0, endingProgress);
-      vec3 pureWhite = vec3(1.0, 1.0, 1.0);
-
-      // Mix colored glows to white
-      multiGlow = mix(multiGlow, pureWhite * (glow1 + glow2 + glow3 + glow4) * 2.0, whiteTransition);
-
-      // Fade tunnel, bring in glows
-      float tunnelFade = 1.0 - smoothstep(0.0, 0.4, endingProgress);
-      color = color * tunnelFade + multiGlow;
-
-      // Final fade to silence (white fades out)
-      float finalFade = smoothstep(0.85, 1.0, endingProgress);
-      color *= (1.0 - finalFade);
-    }
-
-    return color * visibility;
-  }
-
-
   void main() {
     vec3 rd = normalize(vWorldPosition);
     vec3 col = vec3(0.0);
@@ -201,9 +102,13 @@ const fragmentShader = `
     // === JOURNEY PHASE CALCULATION ===
     float journeyTime = max(0.0, iTime - 5.0);
     int currentPhase = int(floor(journeyTime / PHASE_DURATION));
-    currentPhase = min(currentPhase, 4);
+    currentPhase = min(currentPhase, 3);  // Only 4 phases (0-3), no tunnel
     float phaseTime = mod(journeyTime, PHASE_DURATION);
     float phaseProgress = phaseTime / PHASE_DURATION;
+
+    // Track if we're at the final phase ending
+    bool isFinalPhase = (currentPhase == 3);
+    float finalPhaseEnding = isFinalPhase ? smoothstep(PHASE_DURATION - 12.0, PHASE_DURATION, phaseTime) : 0.0;
 
     // Transition timing
     float transitionStart = PHASE_DURATION - TRANSITION_TIME;
@@ -221,14 +126,14 @@ const fragmentShader = `
 
     // Forward motion with progressive speed
     float forwardMotion = 0.0;
-    if (introComplete > 0.0 && currentPhase < 4) {
+    if (introComplete > 0.0 && currentPhase <= 3) {
       float speedMult = getSpeedMultiplier(currentPhase, phaseProgress);
       float accel = smoothstep(0.0, 10.0, phaseTime);
       forwardMotion = phaseTime * 0.8 * accel * speedMult;
     }
 
     // === BEACON === (only for phases 0-3)
-    if (introComplete > 0.0 && currentPhase < 4) {
+    if (introComplete > 0.0 && currentPhase <= 3) {
       float beaconDistX = abs(rd.x);
       float beaconDistY = abs(rd.y);
       float forwardFacing = smoothstep(0.1, -0.4, rd.z);
@@ -236,24 +141,25 @@ const fragmentShader = `
       // Approach factor: starts at 0, grows to 1 as user approaches light
       float approachFactor = smoothstep(0.0, transitionStart, phaseTime);
 
-      // Light starts smaller (narrower beam) and grows as user approaches
-      float beamTightness = 40.0 - approachFactor * 20.0; // 40 -> 20 (gets wider)
+      // Light starts smaller (narrower beam) - SMALLER glow lights
+      float beamTightness = 60.0 - approachFactor * 25.0; // 60 -> 35 (tighter/smaller beams)
       float beamWidth = exp(-beaconDistX * beaconDistX * beamTightness);
-      float beamHeight = smoothstep(0.9, 0.0, beaconDistY);
+      float beamHeight = smoothstep(0.85, 0.0, beaconDistY);
       float beaconCore = beamWidth * beamHeight * forwardFacing;
 
-      float glowTightness = 12.0 - approachFactor * 6.0; // 12 -> 6 (gets wider)
+      float glowTightness = 18.0 - approachFactor * 8.0; // 18 -> 10 (smaller glow)
       float beaconGlow = exp(-beaconDistX * beaconDistX * glowTightness) * forwardFacing;
-      beaconGlow *= smoothstep(0.95, 0.2, beaconDistY);
+      beaconGlow *= smoothstep(0.9, 0.2, beaconDistY);
 
-      // Pulsation increases as user approaches - starts subtle, becomes very alive
-      float pulseSpeed = 0.8 + approachFactor * 4.0; // 0.8 -> 4.8 Hz
-      float pulseIntensity = 0.05 + approachFactor * 0.4; // 5% -> 45% variation
+      // Pulsation ONLY starts when user is very near (80% approach)
+      float pulseActivation = smoothstep(0.8, 1.0, approachFactor);
+      float pulseSpeed = 1.5 + pulseActivation * 4.5; // Only pulses when near
+      float pulseIntensity = pulseActivation * 0.45; // 0% -> 45% variation (only when near)
       float pulse = 1.0 + sin(iTime * pulseSpeed) * pulseIntensity;
       // Add secondary faster pulse when very close
-      float closePulse = smoothstep(0.7, 1.0, approachFactor);
-      pulse += sin(iTime * 8.0) * 0.2 * closePulse;
-      pulse += sin(iTime * 12.0) * 0.1 * closePulse;
+      float closePulse = smoothstep(0.9, 1.0, approachFactor);
+      pulse += sin(iTime * 8.0) * 0.25 * closePulse;
+      pulse += sin(iTime * 12.0) * 0.15 * closePulse;
 
       // Intensity grows from small to bright as user approaches
       float baseIntensity = 0.3 + approachFactor * 0.7; // starts at 30%, grows to 100%
@@ -265,10 +171,29 @@ const fragmentShader = `
       vec3 beaconColor = getBeaconColor(currentPhase);
       col += beaconColor * beaconIntensity;
 
-      if (inTransition > 0.0) {
+      // Phase transition flash (but not for final phase ending)
+      if (inTransition > 0.0 && !isFinalPhase) {
         float flash = sin(inTransition * 3.14159);
         col += beaconColor * flash * 3.0;
       }
+    }
+
+    // === FINAL PHASE WHITE LIGHT ENDING ===
+    if (finalPhaseEnding > 0.0) {
+      // When final pulse reached at end of Phase 3, expand into full white
+      float whiteExpand = smoothstep(0.0, 0.3, finalPhaseEnding); // Quick expansion
+      float whiteHold = smoothstep(0.3, 1.0, finalPhaseEnding); // Hold bright
+
+      // Radial white expansion from beacon direction
+      float beaconDir = smoothstep(0.2, -0.8, rd.z);
+      float whiteGlow = exp(-length(rd.xy) * length(rd.xy) * (8.0 - whiteExpand * 7.0));
+
+      // Full screen white
+      float fullWhite = whiteExpand * (beaconDir * 0.5 + whiteGlow * 0.5 + whiteHold * 1.5);
+      vec3 pureWhite = vec3(1.0, 1.0, 1.0);
+
+      // Override color with white expansion
+      col = mix(col, pureWhite * 3.0, fullWhite);
     }
 
     // === INTRO GRID (cubic only) ===
@@ -312,7 +237,7 @@ const fragmentShader = `
     }
 
     // === JOURNEY GRIDS (phases 0-3) ===
-    if (introComplete > 0.0 && currentPhase < 4) {
+    if (introComplete > 0.0 && currentPhase <= 3 && finalPhaseEnding < 0.8) {
       float baseSpacing = getSpacing(currentPhase);
 
       // Grid becomes increasingly sparse as user approaches light
@@ -411,15 +336,6 @@ const fragmentShader = `
         if (t > maxDist) break;
       }
     }
-
-    // === PHASE 4: FLOWING TUNNEL ===
-    if (currentPhase == 4 && introComplete > 0.0) {
-      // Calculate tunnel progress (0 to 1 over TUNNEL_DURATION seconds)
-      float tunnelTime = journeyTime - (PHASE_DURATION * 4.0);
-      float tunnelProgress = clamp(tunnelTime / TUNNEL_DURATION, 0.0, 1.0);
-      col += renderTunnelPhase(rd, iTime, gridVisibility * introComplete, tunnelProgress);
-    }
-
 
     // Apply brightness
     col *= iBrightness * 0.8;
