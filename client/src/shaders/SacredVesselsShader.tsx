@@ -655,6 +655,12 @@ export function SacredVesselsShader({
       material.uniforms.iIntroProgress.value = introProgress;
       material.uniforms.iColorShift.value = colorShift;
       material.uniforms.iAudioTime.value = audioTime;
+
+      // Debug: log audio time every 5 seconds to verify phase transitions
+      if (Math.floor(audioTime) % 30 === 0 && audioTime > 0) {
+        const phase = audioTime < 143 ? 'Base' : audioTime < 173 ? 'Phase1-Golden+Colors' : audioTime < 183 ? 'Transition' : audioTime < 210 ? 'Phase2-GoldenRays' : audioTime < 220 ? 'Transition' : audioTime < 260 ? 'Phase3-Cathedral' : 'Phase4-Peak';
+        console.log(`Ascension audioTime: ${audioTime.toFixed(1)}s - ${phase}`);
+      }
     }
   });
 
