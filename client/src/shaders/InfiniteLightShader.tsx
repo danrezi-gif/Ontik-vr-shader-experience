@@ -106,9 +106,19 @@ const fragmentShader = `
     float phaseTime = mod(journeyTime, PHASE_DURATION);
     float phaseProgress = phaseTime / PHASE_DURATION;
 
+    // Track if we're past all phases (experience should end in white)
+    float totalPhaseDuration = PHASE_DURATION * 4.0; // 4 phases total
+    bool isPastAllPhases = journeyTime >= totalPhaseDuration;
+
     // Track if we're at the final phase ending
-    bool isFinalPhase = (currentPhase == 3);
-    float finalPhaseEnding = isFinalPhase ? smoothstep(PHASE_DURATION - 12.0, PHASE_DURATION, phaseTime) : 0.0;
+    bool isFinalPhase = (currentPhase == 3) && !isPastAllPhases;
+    // For final phase calculation, use actual phase 3 time (not wrapped)
+    float phase3Time = journeyTime - (PHASE_DURATION * 3.0);
+    float finalPhaseEnding = isFinalPhase ? smoothstep(PHASE_DURATION - 12.0, PHASE_DURATION, phase3Time) : 0.0;
+    // Once past all phases, keep at full white
+    if (isPastAllPhases) {
+      finalPhaseEnding = 1.0;
+    }
 
     // Transition timing
     float transitionStart = PHASE_DURATION - TRANSITION_TIME;
@@ -132,8 +142,8 @@ const fragmentShader = `
       forwardMotion = phaseTime * 0.8 * accel * speedMult;
     }
 
-    // === BEACON === (only for phases 0-3)
-    if (introComplete > 0.0 && currentPhase <= 3) {
+    // === BEACON === (only for phases 0-3, not past all phases)
+    if (introComplete > 0.0 && currentPhase <= 3 && !isPastAllPhases) {
       float beaconDistX = abs(rd.x);
       float beaconDistY = abs(rd.y);
       float forwardFacing = smoothstep(0.1, -0.4, rd.z);
@@ -179,10 +189,11 @@ const fragmentShader = `
     }
 
     // === FINAL PHASE WHITE LIGHT ENDING ===
-    if (finalPhaseEnding > 0.0) {
+    if (finalPhaseEnding > 0.0 || isPastAllPhases) {
       // When final pulse reached at end of Phase 3, expand into full white
-      float whiteExpand = smoothstep(0.0, 0.3, finalPhaseEnding); // Quick expansion
-      float whiteHold = smoothstep(0.3, 1.0, finalPhaseEnding); // Hold bright
+      float effectiveEnding = isPastAllPhases ? 1.0 : finalPhaseEnding;
+      float whiteExpand = smoothstep(0.0, 0.3, effectiveEnding); // Quick expansion
+      float whiteHold = smoothstep(0.3, 1.0, effectiveEnding); // Hold bright
 
       // Radial white expansion from beacon direction
       float beaconDir = smoothstep(0.2, -0.8, rd.z);
@@ -192,8 +203,12 @@ const fragmentShader = `
       float fullWhite = whiteExpand * (beaconDir * 0.5 + whiteGlow * 0.5 + whiteHold * 1.5);
       vec3 pureWhite = vec3(1.0, 1.0, 1.0);
 
-      // Override color with white expansion
-      col = mix(col, pureWhite * 3.0, fullWhite);
+      // Override color with white expansion - when past all phases, go full white
+      if (isPastAllPhases) {
+        col = pureWhite * 3.0;
+      } else {
+        col = mix(col, pureWhite * 3.0, fullWhite);
+      }
     }
 
     // === INTRO GRID (cubic only) ===
@@ -236,8 +251,8 @@ const fragmentShader = `
       }
     }
 
-    // === JOURNEY GRIDS (phases 0-3) ===
-    if (introComplete > 0.0 && currentPhase <= 3 && finalPhaseEnding < 0.8) {
+    // === JOURNEY GRIDS (phases 0-3, not past all phases) ===
+    if (introComplete > 0.0 && currentPhase <= 3 && finalPhaseEnding < 0.8 && !isPastAllPhases) {
       float baseSpacing = getSpacing(currentPhase);
 
       // Grid becomes increasingly sparse as user approaches light
