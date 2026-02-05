@@ -31,9 +31,10 @@ const fragmentShader = `
     return fract((p.x + p.y) * p.z);
   }
 
-  // Phase timing - adjusted for track
-  const float PHASE_DURATION = 97.0;
+  // Phase timing - halved duration for each light
+  const float PHASE_DURATION = 48.0;
   const float TRANSITION_TIME = 5.0;
+  const float TUNNEL_DURATION = 40.0;
 
   // Beacon colors
   vec3 getBeaconColor(int phase) {
@@ -83,7 +84,7 @@ const fragmentShader = `
     return 6.0;
   }
 
-  // === PALETTE SHADER (Phase 4) ===
+  // === FLOWING TUNNEL SHADER (Phase 4) ===
   vec3 palette(float t) {
     vec3 a = vec3(0.5, 0.5, 0.5);
     vec3 b = vec3(0.5, 0.5, 0.5);
@@ -92,123 +93,94 @@ const fragmentShader = `
     return a + b * cos(2.0 * PI * (c * t + d));
   }
 
-  vec3 renderPalettePhase(vec3 rd, float time, float visibility) {
-    vec2 uv = rd.xy * 2.0;
+  vec3 renderTunnelPhase(vec3 rd, float time, float visibility, float tunnelProgress) {
+    // Tunnel coordinate system - looking forward into -Z
+    float angle = atan(rd.y, rd.x);
+    float radialDist = length(rd.xy);
 
-    float angle = atan(-uv.y, -uv.x) / (2.0 * PI);
-    float dist = length(uv) * 1.5;
+    // Create tunnel depth illusion based on view angle
+    float tunnelDepth = 1.0 / (radialDist + 0.1);
 
-    // Simulated audio level
-    float level = 0.3 + 0.2 * sin(time * 2.0) + 0.1 * sin(time * 3.7);
+    // Flowing motion through tunnel
+    float flow = time * 2.0;
 
-    angle = abs(2.0 * (1.0 - angle));
+    // Create glowing rings that flow toward viewer
+    float ringFreq = 8.0;
+    float rings = sin((tunnelDepth * ringFreq - flow) * PI);
+    rings = smoothstep(0.3, 1.0, rings);
 
-    if (dist < 1.0) {
-      dist = pow(dist, (1.0 - 0.95 * level) * 20.0);
-    } else {
-      dist = pow(pow(2.0, 100.0), 1.0 - dist);
+    // Spiral glow pattern
+    float spiral = sin(angle * 3.0 + tunnelDepth * 4.0 - flow * 1.5);
+    spiral = spiral * 0.5 + 0.5;
+
+    // Color shifts as user travels through tunnel
+    float colorPhase = tunnelDepth * 0.3 - time * 0.15;
+    vec3 tunnelColor = palette(colorPhase + angle / (2.0 * PI));
+
+    // Glowing edges of tunnel
+    float edgeGlow = smoothstep(0.8, 0.2, radialDist);
+    float coreGlow = exp(-radialDist * radialDist * 3.0);
+
+    // Combine effects
+    float glow = (rings * 0.6 + spiral * 0.4) * edgeGlow + coreGlow * 0.5;
+
+    // Pulsing intensity
+    float pulse = 0.8 + 0.2 * sin(time * 3.0) + 0.1 * sin(time * 5.3);
+    glow *= pulse;
+
+    vec3 color = tunnelColor * glow * 2.0;
+
+    // === ENDING SEQUENCE (last 10 seconds of 40) ===
+    float endingStart = 30.0;
+    float endingProgress = smoothstep(endingStart, TUNNEL_DURATION, tunnelProgress * TUNNEL_DURATION);
+
+    if (endingProgress > 0.0) {
+      // Multiple glows appear from different directions
+      vec3 multiGlow = vec3(0.0);
+
+      // Glow 1 - from above
+      float glow1Dist = length(rd - vec3(0.0, 0.8, -0.6));
+      float glow1 = exp(-glow1Dist * glow1Dist * 8.0);
+      multiGlow += palette(0.0) * glow1;
+
+      // Glow 2 - from below left
+      float glow2Dist = length(rd - vec3(-0.7, -0.5, -0.5));
+      float glow2 = exp(-glow2Dist * glow2Dist * 8.0);
+      multiGlow += palette(0.33) * glow2;
+
+      // Glow 3 - from below right
+      float glow3Dist = length(rd - vec3(0.7, -0.5, -0.5));
+      float glow3 = exp(-glow3Dist * glow3Dist * 8.0);
+      multiGlow += palette(0.66) * glow3;
+
+      // Glow 4 - from center front
+      float glow4Dist = length(rd - vec3(0.0, 0.0, -1.0));
+      float glow4 = exp(-glow4Dist * glow4Dist * 6.0);
+      multiGlow += vec3(1.0, 0.95, 0.9) * glow4;
+
+      // Glows intensify
+      float glowIntensity = smoothstep(0.0, 0.5, endingProgress) * 3.0;
+      multiGlow *= glowIntensity;
+
+      // All glows converge and transform to white
+      float whiteTransition = smoothstep(0.6, 1.0, endingProgress);
+      vec3 pureWhite = vec3(1.0, 1.0, 1.0);
+
+      // Mix colored glows to white
+      multiGlow = mix(multiGlow, pureWhite * (glow1 + glow2 + glow3 + glow4) * 2.0, whiteTransition);
+
+      // Fade tunnel, bring in glows
+      float tunnelFade = 1.0 - smoothstep(0.0, 0.4, endingProgress);
+      color = color * tunnelFade + multiGlow;
+
+      // Final fade to silence (white fades out)
+      float finalFade = smoothstep(0.85, 1.0, endingProgress);
+      color *= (1.0 - finalFade);
     }
-
-    vec3 result = (1.0 + 5.0 * level) * dist * palette(-time / 2.0 + angle);
-    vec3 color = tanh(result);
 
     return color * visibility;
   }
 
-  // === TORUS SHADER (Phase 5) ===
-  const float Radius1 = 8.0;
-  const float Radius2 = 3.0;
-  const float TorusSpeed1 = 0.3;
-  const float TorusSpeed2 = 15.0;
-
-  float sdTorus(vec3 p, vec2 t) {
-    vec2 q = vec2(length(p.xz) - t.x, p.y);
-    return length(q) - t.y;
-  }
-
-  float mapTorus(vec3 pos) {
-    vec3 q = pos;
-    float d = -sdTorus(q.xzy, vec2(Radius1, Radius2));
-    return d;
-  }
-
-  vec3 calcTorusNormal(vec3 pos) {
-    const float ep = 0.0001;
-    vec2 e = vec2(1.0, -1.0) * 0.5773;
-    return normalize(
-      e.xyy * mapTorus(pos + e.xyy * ep) +
-      e.yyx * mapTorus(pos + e.yyx * ep) +
-      e.yxy * mapTorus(pos + e.yxy * ep) +
-      e.xxx * mapTorus(pos + e.xxx * ep)
-    );
-  }
-
-  vec3 applyFog(vec3 rgb, float distance, float strength) {
-    float fogAmount = 1.0 - exp(-distance * strength);
-    vec3 fogColor = vec3(0.0);
-    return mix(rgb, fogColor, fogAmount);
-  }
-
-  vec3 renderTorusPhase(vec3 rd, float time, float visibility, vec3 noiseCoord) {
-    vec3 ro = vec3(0.0, Radius1, 0.0);
-    rd = rd.zxy;
-
-    float rotTime = time * TorusSpeed1;
-
-    mat3 m = mat3(
-      1.0, 0.0, 0.0,
-      0.0, cos(rotTime), sin(rotTime),
-      0.0, -sin(rotTime), cos(rotTime)
-    );
-
-    rd = m * rd;
-
-    float t = 0.5;
-    for (int i = 0; i < 64; i++) {
-      vec3 p = ro + t * rd;
-      float h = mapTorus(p);
-      if (abs(h) < 0.001) break;
-      t += h;
-    }
-
-    vec3 p = ro + t * rd;
-    float theta = (atan(p.x, p.y) / PI + 1.0) * 150.0 - time * TorusSpeed2;
-    float phi = (atan(length(p.xy) - Radius1, p.z) / PI + 1.0) * 30.0;
-
-    float itheta = floor(theta);
-    float iphi = floor(phi);
-    float ftheta = theta - itheta;
-    float fphi = phi - iphi;
-
-    ftheta = clamp(ftheta * 0.6 + 0.2, 0.0, 1.0);
-    fphi = clamp(fphi * 0.8 + 0.1, 0.0, 1.0);
-
-    // Use noise for randomization
-    float randVal = hash(vec3(iphi, itheta, 0.0) * 0.386557);
-    float digit = floor(randVal * 10.0);
-
-    // Time-based digit variation
-    float freq = sin(time * 0.5 + randVal * 6.28) * 0.5 + 0.5;
-    digit = mod(digit + (freq > 0.5 ? 1.0 : 0.0), 10.0);
-
-    // Simple digit pattern
-    vec2 digitUV = vec2(ftheta, fphi) * 2.0 - 1.0;
-    float pattern = 0.0;
-    float d = mod(digit, 10.0);
-    if (d < 2.0) pattern = step(abs(digitUV.y - 0.5), 0.15) + step(abs(digitUV.y + 0.5), 0.15);
-    else if (d < 4.0) pattern = step(abs(digitUV.y), 0.15);
-    else if (d < 6.0) pattern = step(abs(digitUV.x), 0.15);
-    else if (d < 8.0) pattern = step(length(digitUV), 0.4);
-    else pattern = step(abs(digitUV.x - digitUV.y), 0.2);
-
-    vec3 color = vec3(clamp(pattern, 0.0, 1.0));
-    color *= vec3(0.2, 1.0, 0.3); // Green matrix color
-
-    vec3 norm = calcTorusNormal(p);
-    color = applyFog(color, t, 0.2 * ((norm.z * norm.z) / 3.0 + 0.1 + clamp(norm.y * 0.4, 0.0, 1.0)));
-
-    return color * visibility;
-  }
 
   void main() {
     vec3 rd = normalize(vWorldPosition);
@@ -229,7 +201,7 @@ const fragmentShader = `
     // === JOURNEY PHASE CALCULATION ===
     float journeyTime = max(0.0, iTime - 5.0);
     int currentPhase = int(floor(journeyTime / PHASE_DURATION));
-    currentPhase = min(currentPhase, 5);
+    currentPhase = min(currentPhase, 4);
     float phaseTime = mod(journeyTime, PHASE_DURATION);
     float phaseProgress = phaseTime / PHASE_DURATION;
 
@@ -261,16 +233,32 @@ const fragmentShader = `
       float beaconDistY = abs(rd.y);
       float forwardFacing = smoothstep(0.1, -0.4, rd.z);
 
-      float beamWidth = exp(-beaconDistX * beaconDistX * 25.0);
+      // Approach factor: starts at 0, grows to 1 as user approaches light
+      float approachFactor = smoothstep(0.0, transitionStart, phaseTime);
+
+      // Light starts smaller (narrower beam) and grows as user approaches
+      float beamTightness = 40.0 - approachFactor * 20.0; // 40 -> 20 (gets wider)
+      float beamWidth = exp(-beaconDistX * beaconDistX * beamTightness);
       float beamHeight = smoothstep(0.9, 0.0, beaconDistY);
       float beaconCore = beamWidth * beamHeight * forwardFacing;
-      float beaconGlow = exp(-beaconDistX * beaconDistX * 8.0) * forwardFacing;
+
+      float glowTightness = 12.0 - approachFactor * 6.0; // 12 -> 6 (gets wider)
+      float beaconGlow = exp(-beaconDistX * beaconDistX * glowTightness) * forwardFacing;
       beaconGlow *= smoothstep(0.95, 0.2, beaconDistY);
 
-      float pulse = sin(iTime * 0.8) * 0.15 + 0.85;
+      // Pulsation increases as user approaches - starts subtle, becomes very alive
+      float pulseSpeed = 0.8 + approachFactor * 4.0; // 0.8 -> 4.8 Hz
+      float pulseIntensity = 0.05 + approachFactor * 0.4; // 5% -> 45% variation
+      float pulse = 1.0 + sin(iTime * pulseSpeed) * pulseIntensity;
+      // Add secondary faster pulse when very close
+      float closePulse = smoothstep(0.7, 1.0, approachFactor);
+      pulse += sin(iTime * 8.0) * 0.2 * closePulse;
+      pulse += sin(iTime * 12.0) * 0.1 * closePulse;
 
-      float approachBright = 1.0 + smoothstep(transitionStart - 25.0, transitionStart, phaseTime) * 2.5;
-      approachBright += inTransition * 4.0;
+      // Intensity grows from small to bright as user approaches
+      float baseIntensity = 0.3 + approachFactor * 0.7; // starts at 30%, grows to 100%
+      float approachBright = baseIntensity + smoothstep(transitionStart - 15.0, transitionStart, phaseTime) * 3.0;
+      approachBright += inTransition * 5.0;
 
       float beaconIntensity = (beaconCore * 2.0 + beaconGlow * 0.8) * pulse * introComplete * approachBright;
 
@@ -279,7 +267,7 @@ const fragmentShader = `
 
       if (inTransition > 0.0) {
         float flash = sin(inTransition * 3.14159);
-        col += beaconColor * flash * 2.5;
+        col += beaconColor * flash * 3.0;
       }
     }
 
@@ -325,9 +313,18 @@ const fragmentShader = `
 
     // === JOURNEY GRIDS (phases 0-3) ===
     if (introComplete > 0.0 && currentPhase < 4) {
-      float spacing = getSpacing(currentPhase);
+      float baseSpacing = getSpacing(currentPhase);
+
+      // Grid becomes increasingly sparse as user approaches light
+      // Spacing grows from 1x to 3x as phaseProgress goes 0 -> 1
+      float sparseFactor = 1.0 + phaseProgress * 2.0;
+      float spacing = baseSpacing * sparseFactor;
+
+      // Dots become brighter as grid becomes sparser
+      float sparseBrightness = 1.0 + phaseProgress * 2.5; // 1x -> 3.5x brighter
+
       float t = 0.2;
-      float maxDist = 60.0;
+      float maxDist = 80.0 + phaseProgress * 40.0; // Extended view distance
 
       for(int i = 0; i < 48; i++) {
         vec3 motionOffset = vec3(0.0, 0.0, -forwardMotion);
@@ -357,18 +354,19 @@ const fragmentShader = `
           h = hash(cellId);
         }
         else if (currentPhase == 2) {
-          // VERTICAL PILLARS (was phase 3)
+          // VERTICAL PILLARS
+          float vSpacing = 1.5 * sparseFactor;
           vec2 pillarCell = floor(p.xz / spacing);
           vec2 pillarQ = mod(p.xz, spacing) - spacing * 0.5;
-          float vCell = floor(p.y / 1.5);
+          float vCell = floor(p.y / vSpacing);
           cellId = vec3(pillarCell.x, vCell, pillarCell.y);
           float pillarDist = length(pillarQ);
-          float vQ = mod(p.y, 1.5) - 0.75;
+          float vQ = mod(p.y, vSpacing) - vSpacing * 0.5;
           d = length(vec2(pillarDist, vQ));
           h = hash(cellId);
         }
         else {
-          // DIAMOND LATTICE (was phase 4)
+          // DIAMOND LATTICE
           vec3 offset = vec3(0.0);
           float layer = floor(p.y / spacing);
           if (mod(layer, 2.0) > 0.5) offset.xz = vec2(spacing * 0.5);
@@ -387,15 +385,18 @@ const fragmentShader = `
           continue;
         }
 
-        float lightSize = 0.03 + h * 0.05;
+        // Light size grows slightly as grid becomes sparser
+        float lightSize = (0.03 + h * 0.05) * (1.0 + phaseProgress * 0.5);
         float core = smoothstep(lightSize, 0.0, d) * 3.0;
         float glow = lightSize / (d + 0.02);
         float light = core + glow * glow * 0.4;
 
-        light *= (0.7 + h3 * 0.5) / (1.0 + t * 0.025);
+        // Apply sparse brightness boost
+        light *= sparseBrightness;
+        light *= (0.7 + h3 * 0.5) / (1.0 + t * 0.02);
 
         float cellDist = length(cellId) * spacing;
-        float reveal = smoothstep(maxDist, maxDist - 10.0, cellDist);
+        float reveal = smoothstep(maxDist, maxDist - 15.0, cellDist);
         light *= reveal * gridVisibility * introComplete;
 
         vec3 lightColor = getGridColor(currentPhase, h2);
@@ -411,15 +412,14 @@ const fragmentShader = `
       }
     }
 
-    // === PHASE 4: PALETTE SHADER ===
+    // === PHASE 4: FLOWING TUNNEL ===
     if (currentPhase == 4 && introComplete > 0.0) {
-      col += renderPalettePhase(rd, iTime, gridVisibility * introComplete);
+      // Calculate tunnel progress (0 to 1 over TUNNEL_DURATION seconds)
+      float tunnelTime = journeyTime - (PHASE_DURATION * 4.0);
+      float tunnelProgress = clamp(tunnelTime / TUNNEL_DURATION, 0.0, 1.0);
+      col += renderTunnelPhase(rd, iTime, gridVisibility * introComplete, tunnelProgress);
     }
 
-    // === PHASE 5: TORUS MATRIX ===
-    if (currentPhase == 5 && introComplete > 0.0) {
-      col += renderTorusPhase(rd, iTime, gridVisibility * introComplete, vWorldPosition);
-    }
 
     // Apply brightness
     col *= iBrightness * 0.8;
