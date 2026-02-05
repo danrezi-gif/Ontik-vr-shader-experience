@@ -773,49 +773,6 @@ function App() {
     setAudioTime(time);
   }, []);
 
-  // Auto-return to menu after infinite-light experience ends
-  // Total duration: intro (35s) + journey delay (5s) + 4 phases (4×48=192s) + tunnel (40s) = 272s
-  const experienceEndTimeRef = useRef<number | null>(null);
-  useEffect(() => {
-    if (selectedShader !== 'infinite-light' || !introComplete) return;
-
-    // Calculate experience end time: journey starts at 5s after intro, phases take 192s, tunnel takes 40s
-    const EXPERIENCE_DURATION = 5 + (48 * 4) + 40; // 237 seconds from intro complete
-
-    const checkExperienceEnd = () => {
-      if (!experienceEndTimeRef.current) {
-        experienceEndTimeRef.current = Date.now();
-      }
-
-      const elapsed = (Date.now() - experienceEndTimeRef.current) / 1000;
-
-      if (elapsed >= EXPERIENCE_DURATION) {
-        // Fade out audio over 3 seconds
-        const audio = globalAudio.positionalAudio || globalAudio.audio;
-        if (audio && audio.isPlaying) {
-          const ctx = audio.context;
-          const gainNode = audio.gain;
-          gainNode.gain.setValueAtTime(gainNode.gain.value, ctx.currentTime);
-          gainNode.gain.linearRampToValueAtTime(0, ctx.currentTime + 3);
-
-          // Return to menu after fade completes
-          setTimeout(() => {
-            handleBack();
-          }, 3500);
-        } else {
-          handleBack();
-        }
-        return;
-      }
-    };
-
-    const interval = setInterval(checkExperienceEnd, 1000);
-    return () => {
-      clearInterval(interval);
-      experienceEndTimeRef.current = null;
-    };
-  }, [selectedShader, introComplete, handleBack]);
-
   const handleSpeedChange = useCallback((delta: number) => {
     setSpeed(prev => Math.max(0.1, Math.min(3.0, prev + delta)));
   }, []);
@@ -873,6 +830,49 @@ function App() {
     setVrError(null);
     setVrSessionActive(false);
   }, []);
+
+  // Auto-return to menu after infinite-light experience ends
+  // Total duration: intro (35s) + journey delay (5s) + 4 phases (4×48=192s) + tunnel (40s) = 272s
+  const experienceEndTimeRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (selectedShader !== 'infinite-light' || !introComplete) return;
+
+    // Calculate experience end time: journey starts at 5s after intro, phases take 192s, tunnel takes 40s
+    const EXPERIENCE_DURATION = 5 + (48 * 4) + 40; // 237 seconds from intro complete
+
+    const checkExperienceEnd = () => {
+      if (!experienceEndTimeRef.current) {
+        experienceEndTimeRef.current = Date.now();
+      }
+
+      const elapsed = (Date.now() - experienceEndTimeRef.current) / 1000;
+
+      if (elapsed >= EXPERIENCE_DURATION) {
+        // Fade out audio over 3 seconds
+        const audio = globalAudio.positionalAudio || globalAudio.audio;
+        if (audio && audio.isPlaying) {
+          const ctx = audio.context;
+          const gainNode = audio.gain;
+          gainNode.gain.setValueAtTime(gainNode.gain.value, ctx.currentTime);
+          gainNode.gain.linearRampToValueAtTime(0, ctx.currentTime + 3);
+
+          // Return to menu after fade completes
+          setTimeout(() => {
+            handleBack();
+          }, 3500);
+        } else {
+          handleBack();
+        }
+        return;
+      }
+    };
+
+    const interval = setInterval(checkExperienceEnd, 1000);
+    return () => {
+      clearInterval(interval);
+      experienceEndTimeRef.current = null;
+    };
+  }, [selectedShader, introComplete, handleBack]);
 
   const enterVR = useCallback(async () => {
     setVrError(null);
