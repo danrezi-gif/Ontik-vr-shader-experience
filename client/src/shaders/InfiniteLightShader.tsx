@@ -212,7 +212,8 @@ const fragmentShader = `
     }
 
     // === INTRO GRID (cubic only) ===
-    if (iIntroProgress > 0.15 && introComplete < 1.0) {
+    // Skip if past all phases (experience ended, should stay white)
+    if (iIntroProgress > 0.15 && introComplete < 1.0 && !isPastAllPhases) {
       float spacing = 2.2;
       float t = 0.2;
       float maxDist = 3.0 + multiplyPhase * 57.0;
@@ -350,6 +351,13 @@ const fragmentShader = `
         t += max(d * 0.5, 0.3);
         if (t > maxDist) break;
       }
+    }
+
+    // === FINAL WHITE OVERRIDE ===
+    // This is the absolute last check - when past all phases, force pure white
+    // regardless of anything that may have been rendered above
+    if (isPastAllPhases) {
+      col = vec3(1.0, 1.0, 1.0) * 3.0;
     }
 
     // Apply brightness
