@@ -14,12 +14,6 @@ export const SHADERS: ShaderInfo[] = [
     color: '#ffa500'
   },
   {
-    id: 'tunnel-lights',
-    name: 'Alpha and Omega',
-    description: 'A sacred passage between being and non-being',
-    color: '#4488ff'
-  },
-  {
     id: 'infinite-light',
     name: 'Infinite Gateway',
     description: 'Where does reality end?',
@@ -32,9 +26,15 @@ export const SHADERS: ShaderInfo[] = [
     color: '#6699ff'
   },
   {
-    id: 'platonic-solids',
-    name: 'Transcendent Objects',
-    description: 'Void and Form are one',
-    color: '#aa66ff'
+    id: 'tunnel-lights',
+    name: 'Alpha and Omega',
+    description: 'A sacred passage between being and non-being',
+    color: '#4488ff'
+  },
+  {
+    id: 'torus-matrix',
+    name: 'The Matrix',
+    description: 'Digital rain flows through the infinite',
+    color: '#00ff44'
   }
 ];

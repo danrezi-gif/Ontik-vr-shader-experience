@@ -6,7 +6,7 @@ import { AbstractWavesShader } from "./shaders/AbstractWavesShader";
 import { TunnelLightsShader } from "./shaders/TunnelLightsShader";
 import { InfiniteLightShader } from "./shaders/InfiniteLightShader";
 import { SacredVesselsShader } from "./shaders/SacredVesselsShader";
-import { PlatonicSolidsShader } from "./shaders/PlatonicSolidsShader";
+import { TorusMatrixShader } from "./shaders/TorusMatrixShader";
 import { SHADERS } from "./shaders";
 import "@fontsource/inter";
 import * as THREE from "three";
@@ -36,8 +36,8 @@ function ShaderRenderer({ shaderId, speed, pulse, brightness, colorShift, zoom, 
       return <InfiniteLightShader speed={speed} brightness={brightness} colorShift={colorShift} zoom={zoom} pulse={pulse} headRotationY={headRotationY} introProgress={introProgress} />;
     case 'sacred-vessels':
       return <SacredVesselsShader speed={speed} brightness={brightness} colorShift={colorShift} headRotationY={headRotationY} introProgress={introProgress} audioTime={audioTime} />;
-    case 'platonic-solids':
-      return <PlatonicSolidsShader introProgress={introProgress} />;
+    case 'torus-matrix':
+      return <TorusMatrixShader speed={speed} brightness={brightness} colorShift={colorShift} headRotationY={headRotationY} introProgress={introProgress} />;
     default:
       return <AbstractWavesShader speed={speed} brightness={brightness} colorShift={colorShift} zoom={zoom} pulse={pulse} headRotationY={headRotationY} introProgress={introProgress} />;
   }
@@ -326,7 +326,6 @@ const SHADER_AUDIO: { [key: string]: string } = {
   'tunnel-lights': 'Russian chant - Покаяния отверзи ми двери.mp3',
   'infinite-light': 'Ligeti-Lux-Aeterna.mp3',
   'sacred-vessels': 'John Tavener - Funeral Canticle (The Tree of Life) FULL VERSION.mp3',
-  // 'platonic-solids': audio TBD
   'default': 'background-music.mp3'
 };
 
@@ -355,7 +354,7 @@ const globalAudio = {
 };
 
 // Shaders that use positional audio from a specific location
-const POSITIONAL_AUDIO_SHADERS = ['tunnel-lights', 'sacred-vessels', 'infinite-light', 'platonic-solids'];
+const POSITIONAL_AUDIO_SHADERS = ['tunnel-lights', 'sacred-vessels', 'infinite-light', 'torus-matrix'];
 
 function getAudioBufferForShader(shaderId: string): AudioBuffer | null {
   return audioBuffers[shaderId] || audioBuffers['default'] || null;
@@ -558,9 +557,9 @@ function BackgroundMusic({ shouldPlay, shaderId, headRotationY = 0 }: Background
     } else if (shaderId === 'infinite-light') {
       // Close and centered for immersive surrounding effect
       audioPosition = [0, 0, -10];
-    } else if (shaderId === 'platonic-solids') {
-      // Centered, in front - where the solids appear
-      audioPosition = [0, 0, -6];
+    } else if (shaderId === 'torus-matrix') {
+      // Centered, surrounding - inside the torus
+      audioPosition = [0, 0, 0];
     } else {
       audioPosition = [0, 0, -100];
     }
@@ -657,7 +656,7 @@ function VRIntroAnimator({ started, onProgress, onComplete, shaderId }: VRIntroA
     const elapsed = Date.now() - startTimeRef.current;
 
     // Shader-specific intro durations
-    const duration = (shaderId === 'infinite-light' || shaderId === 'platonic-solids') ? 35000 : 8000;
+    const duration = (shaderId === 'infinite-light') ? 35000 : 8000;
     const linearProgress = Math.min(1, elapsed / duration);
 
     // Apply easing curve based on shader
@@ -748,7 +747,7 @@ function App() {
   }, []);
 
   // Calculate effective brightness (intro affects it for abstract-waves and tunnel-lights)
-  const hasIntro = selectedShader === 'abstract-waves' || selectedShader === 'tunnel-lights' || selectedShader === 'infinite-light' || selectedShader === 'sacred-vessels' || selectedShader === 'platonic-solids';
+  const hasIntro = selectedShader === 'abstract-waves' || selectedShader === 'tunnel-lights' || selectedShader === 'infinite-light' || selectedShader === 'sacred-vessels' || selectedShader === 'torus-matrix';
   const isInIntro = vrIntroStarted && hasIntro && !introComplete;
   const introBrightness = 0.1 + 0.9 * introProgress; // 0.1 → 1.0
   const brightness = isInIntro ? introBrightness * baseBrightness : baseBrightness;
