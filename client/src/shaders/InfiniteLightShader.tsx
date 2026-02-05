@@ -12,8 +12,6 @@ const vertexShader = `
 `;
 
 const fragmentShader = `
-  precision highp float;
-
   uniform float iTime;
   uniform float iBrightness;
   uniform float iIntroProgress;
@@ -28,31 +26,30 @@ const fragmentShader = `
   }
 
   // Phase timing - adjusted for 9:48 track
-  // Using #define instead of const for Safari/iOS compatibility
-  #define PHASE_DURATION 97.0
-  #define TRANSITION_TIME 5.0
+  const float PHASE_DURATION = 97.0;
+  const float TRANSITION_TIME = 5.0;
 
-  // Beacon colors - using float for Safari/iOS compatibility
-  vec3 getBeaconColor(float phase) {
-    if (phase < 0.5) return vec3(1.0, 0.15, 0.1);      // Red
-    if (phase < 1.5) return vec3(0.1, 0.9, 0.4);       // Emerald
-    if (phase < 2.5) return vec3(0.3, 0.9, 1.0);       // Cyan (neon)
-    if (phase < 3.5) return vec3(1.0, 0.75, 0.2);      // Golden
-    if (phase < 4.5) return vec3(0.7, 0.2, 0.9);       // Amethyst
+  // Beacon colors
+  vec3 getBeaconColor(int phase) {
+    if (phase == 0) return vec3(1.0, 0.15, 0.1);      // Red
+    if (phase == 1) return vec3(0.1, 0.9, 0.4);       // Emerald
+    if (phase == 2) return vec3(0.3, 0.9, 1.0);       // Cyan (neon)
+    if (phase == 3) return vec3(1.0, 0.75, 0.2);      // Golden
+    if (phase == 4) return vec3(0.7, 0.2, 0.9);       // Amethyst
     return vec3(1.0, 1.0, 0.95);                       // White
   }
 
-  // Grid colors - using float for Safari/iOS compatibility
-  vec3 getGridColor(float phase, float h, float shellAngle, float time) {
-    if (phase < 0.5) {
+  // Grid colors
+  vec3 getGridColor(int phase, float h, float shellAngle, float time) {
+    if (phase == 0) {
       vec3 coolBlue = vec3(0.7, 0.85, 1.0);
       vec3 warmAccent = vec3(1.0, 0.8, 0.5);
       return mix(coolBlue, warmAccent, smoothstep(0.7, 0.9, h));
     }
-    if (phase < 1.5) {
+    if (phase == 1) {
       return mix(vec3(1.0, 0.2, 0.15), vec3(1.0, 0.5, 0.2), h);
     }
-    if (phase < 2.5) {
+    if (phase == 2) {
       // Neon ring palette - cyan to magenta with angle-based variation
       float angleMix = sin(shellAngle * 2.0 + time * 0.3) * 0.5 + 0.5;
       vec3 cyan = vec3(0.1, 0.9, 1.0);
@@ -61,22 +58,22 @@ const fragmentShader = `
       vec3 baseColor = mix(cyan, magenta, angleMix);
       return mix(baseColor, blue, h * 0.4);
     }
-    if (phase < 3.5) {
+    if (phase == 3) {
       return mix(vec3(0.15, 0.35, 1.0), vec3(0.3, 0.7, 1.0), h);
     }
-    if (phase < 4.5) {
+    if (phase == 4) {
       return mix(vec3(1.0, 0.8, 0.2), vec3(1.0, 0.6, 0.1), h);
     }
     return mix(vec3(0.7, 0.2, 0.9), vec3(0.9, 0.4, 1.0), h);
   }
 
-  // Get spacing for each geometry - using float for Safari/iOS compatibility
-  float getSpacing(float phase) {
-    if (phase < 0.5) return 2.2;  // Cubic
-    if (phase < 1.5) return 1.8;  // Hexagonal
-    if (phase < 2.5) return 3.0;  // Spherical
-    if (phase < 3.5) return 2.5;  // Pillars
-    if (phase < 4.5) return 2.0;  // Diamond
+  // Get spacing for each geometry
+  float getSpacing(int phase) {
+    if (phase == 0) return 2.2;  // Cubic
+    if (phase == 1) return 1.8;  // Hexagonal
+    if (phase == 2) return 3.0;  // Spherical
+    if (phase == 3) return 2.5;  // Pillars
+    if (phase == 4) return 2.0;  // Diamond
     return 2.0;                   // Spiral
   }
 
@@ -98,9 +95,8 @@ const fragmentShader = `
 
     // === JOURNEY PHASE CALCULATION ===
     float journeyTime = max(0.0, iTime - 5.0); // Time since intro
-    // Using float instead of int for Safari/iOS compatibility
-    float currentPhase = floor(journeyTime / PHASE_DURATION);
-    currentPhase = min(currentPhase, 5.0);
+    int currentPhase = int(floor(journeyTime / PHASE_DURATION));
+    currentPhase = min(currentPhase, 5);
     float phaseTime = mod(journeyTime, PHASE_DURATION);
 
     // Transition timing
@@ -127,7 +123,7 @@ const fragmentShader = `
     }
 
     // === BEACON === (disabled for phase 5 - warp void has no destination)
-    if (introComplete > 0.0 && currentPhase < 4.5) {
+    if (introComplete > 0.0 && currentPhase < 5) {
       float beaconDistX = abs(rd.x);
       float beaconDistY = abs(rd.y);
       float forwardFacing = smoothstep(0.1, -0.4, rd.z);
@@ -212,15 +208,15 @@ const fragmentShader = `
         float h;
         float shellAngle = 0.0;
 
-        // === GEOMETRY PER PHASE === (using float comparisons for Safari/iOS)
-        if (currentPhase < 0.5) {
+        // === GEOMETRY PER PHASE ===
+        if (currentPhase == 0) {
           // CUBIC
           cellId = floor(p / spacing);
           vec3 q = mod(p, spacing) - spacing * 0.5;
           d = length(q);
           h = hash(cellId);
         }
-        else if (currentPhase < 1.5) {
+        else if (currentPhase == 1) {
           // HEXAGONAL
           float hexSize = spacing;
           vec2 hexP = p.xz;
@@ -232,7 +228,7 @@ const fragmentShader = `
           d = length(vec3(hexQ.x, mod(p.y, hexSize) - hexSize * 0.5, hexQ.y));
           h = hash(cellId);
         }
-        else if (currentPhase < 2.5) {
+        else if (currentPhase == 2) {
           // SPHERICAL SHELLS - neon ring style
           float radius = length(p);
           float shellId = floor(radius / spacing);
@@ -246,7 +242,7 @@ const fragmentShader = `
           // Store angle for color cycling
           shellAngle = theta + phi * 2.0;
         }
-        else if (currentPhase < 3.5) {
+        else if (currentPhase == 3) {
           // VERTICAL PILLARS
           vec2 pillarCell = floor(p.xz / spacing);
           vec2 pillarQ = mod(p.xz, spacing) - spacing * 0.5;
@@ -257,7 +253,7 @@ const fragmentShader = `
           d = length(vec2(pillarDist, vQ));
           h = hash(cellId);
         }
-        else if (currentPhase < 4.5) {
+        else if (currentPhase == 4) {
           // DIAMOND LATTICE
           vec3 offset = vec3(0.0);
           float layer = floor(p.y / spacing);
@@ -329,14 +325,14 @@ const fragmentShader = `
         float light = core + glow * glow * 0.4;
 
         // Enhanced neon glow for phase 2
-        if (currentPhase > 1.5 && currentPhase < 2.5) {
+        if (currentPhase == 2) {
           float neonGlow = exp(-d * d * 8.0) * 2.0;
           float pulse = sin(iTime * 1.5 + shellAngle) * 0.3 + 1.0;
           light = (core * 1.5 + glow * glow * 0.6 + neonGlow) * pulse;
         }
 
         // Phase 5: Warp void special lighting
-        if (currentPhase > 4.5) {
+        if (currentPhase == 5) {
           // h contains lifeFade for this phase
           float lifeFade = h;
 
@@ -362,13 +358,13 @@ const fragmentShader = `
         vec3 lightColor = getGridColor(currentPhase, h2, shellAngle, iTime);
 
         // Phase 5: Multi-color from all previous phases
-        if (currentPhase > 4.5) {
-          // Cycle through all phase colors based on cell hash (using float for Safari/iOS)
-          float colorPhase = mod(h2 * 6.0, 5.0);
-          if (colorPhase < 1.0) lightColor = vec3(1.0, 0.15, 0.1);       // Red
-          else if (colorPhase < 2.0) lightColor = vec3(0.1, 0.9, 0.4);   // Emerald
-          else if (colorPhase < 3.0) lightColor = vec3(0.3, 0.9, 1.0);   // Cyan
-          else if (colorPhase < 4.0) lightColor = vec3(1.0, 0.75, 0.2);  // Golden
+        if (currentPhase == 5) {
+          // Cycle through all phase colors based on cell hash
+          int colorPhase = int(mod(h2 * 6.0, 5.0));
+          if (colorPhase == 0) lightColor = vec3(1.0, 0.15, 0.1);       // Red
+          else if (colorPhase == 1) lightColor = vec3(0.1, 0.9, 0.4);   // Emerald
+          else if (colorPhase == 2) lightColor = vec3(0.3, 0.9, 1.0);   // Cyan
+          else if (colorPhase == 3) lightColor = vec3(1.0, 0.75, 0.2);  // Golden
           else lightColor = vec3(0.7, 0.2, 0.9);                         // Amethyst
 
           // Add white core to bright beacons
@@ -390,7 +386,7 @@ const fragmentShader = `
     }
 
     // === PHASE 5: PULSE WAVE RINGS ===
-    if (currentPhase > 4.5 && introComplete > 0.0) {
+    if (currentPhase == 5 && introComplete > 0.0) {
       // Multiple expanding rings from random origins
       for (int w = 0; w < 4; w++) {
         float waveOffset = float(w) * 23.7;

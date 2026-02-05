@@ -78,10 +78,8 @@ const fragmentShader = `
       if (z < -100.0) break;
     }
 
-    // Tonemapping - Safari/iOS compatible version
-    // Using numerically stable alternative to tanh(o*o/1e5)
-    vec4 mapped = o * o / 100000.0;
-    o = mapped / (mapped + vec4(1.0));
+    // Tanh tonemapping (reference: o=tanh(o*o/1e5))
+    o = tanh(o * o / 1e5);
 
     // Intro fade
     float fade = smoothstep(0.0, 0.1, iIntroProgress);
