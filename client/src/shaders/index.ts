@@ -36,5 +36,11 @@ export const SHADERS: ShaderInfo[] = [
     name: 'Transcendent Objects',
     description: 'Void and Form are one',
     color: '#aa66ff'
+  },
+  {
+    id: 'ascension-testing',
+    name: 'Ascension Testing',
+    description: 'Development sandbox - building Ascension step by step',
+    color: '#66ffcc'
   }
 ];
