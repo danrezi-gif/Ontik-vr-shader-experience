@@ -42,5 +42,11 @@ export const SHADERS: ShaderInfo[] = [
     name: 'Ascension Testing',
     description: 'Development sandbox - building Ascension step by step',
     color: '#66ffcc'
+  },
+  {
+    id: 'transcendent-domain',
+    name: 'Transcendent Domain',
+    description: 'Drift through infinite cosmic fractals into pure consciousness',
+    color: '#4488ff'
   }
 ];

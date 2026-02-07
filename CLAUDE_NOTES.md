@@ -1,4 +1,4 @@
-# Claude Development Notes - Ascension Experience
+# Claude Development Notes - VR Shader Experiences
 
 ## WORKFLOW RULES - READ FIRST
 1. **ASK before running build/lint** - Never auto-build
@@ -8,7 +8,29 @@
 
 ---
 
-## Current Focus: SacredVesselsShader.tsx (The Ascension)
+## Latest: TranscendentDomainShader.tsx (Transcendent Domain)
+
+### What Was Built (2026-02-07)
+- **New experience**: Cosmic volumetric fractal journey
+- **Quest 3 optimized**: 6 volsteps, 5 iterations
+- **Duration**: ~6 minutes in 3 phases (2 min each)
+- **Movement**: Constant gentle forward drift through fractal space
+- **Color progression**: Deep cosmic blue → Ethereal cyan → Transcendent white-blue
+- **Intro**: 12-second fade with ease-in-quad curve
+- **Effects**: Central pulsing glow, depth sparkles, phase transition flashes
+
+### Audio Required
+Add to `client/public/audio/`:
+- `The Transcendent Domain - Psychedelic Visuals Cosmic Consciousness - 4K.mp3`
+
+### Files Modified
+- `client/src/shaders/TranscendentDomainShader.tsx` (new)
+- `client/src/shaders/index.ts` (registry)
+- `client/src/App.tsx` (rendering, audio, intro config)
+
+---
+
+## Previous: SacredVesselsShader.tsx (The Ascension)
 
 ### What We've Done
 - **REVERTED** cotton candy clouds changes (commit e47a26b) due to rendering problems
