@@ -8,6 +8,7 @@ import { InfiniteLightShader } from "./shaders/InfiniteLightShader";
 import { SacredVesselsShader } from "./shaders/SacredVesselsShader";
 import { PlatonicSolidsShader } from "./shaders/PlatonicSolidsShader";
 import { AscensionTestingShader } from "./shaders/AscensionTestingShader";
+import { TranscendentDomainShader } from "./shaders/TranscendentDomainShader";
 import { SHADERS } from "./shaders";
 import "@fontsource/inter";
 import * as THREE from "three";
@@ -41,6 +42,8 @@ function ShaderRenderer({ shaderId, speed, pulse, brightness, colorShift, zoom, 
       return <PlatonicSolidsShader introProgress={introProgress} />;
     case 'ascension-testing':
       return <AscensionTestingShader speed={speed} brightness={brightness} colorShift={colorShift} headRotationY={headRotationY} introProgress={introProgress} audioTime={audioTime} />;
+    case 'transcendent-domain':
+      return <TranscendentDomainShader speed={speed} brightness={brightness} colorShift={colorShift} headRotationY={headRotationY} introProgress={introProgress} audioTime={audioTime} />;
     default:
       return <AbstractWavesShader speed={speed} brightness={brightness} colorShift={colorShift} zoom={zoom} pulse={pulse} headRotationY={headRotationY} introProgress={introProgress} />;
   }
@@ -330,6 +333,7 @@ const SHADER_AUDIO: { [key: string]: string } = {
   'infinite-light': 'Ligeti-Lux-Aeterna.mp3',
   'sacred-vessels': 'John Tavener - Funeral Canticle (The Tree of Life) FULL VERSION.mp3',
   'ascension-testing': 'John Tavener - Funeral Canticle (The Tree of Life) FULL VERSION.mp3',
+  'transcendent-domain': 'The Transcendent Domain - Psychedelic Visuals Cosmic Consciousness - 4K.mp3',
   // 'platonic-solids': audio TBD
   'default': 'background-music.mp3'
 };
@@ -360,7 +364,7 @@ const globalAudio = {
 };
 
 // Shaders that use positional audio from a specific location
-const POSITIONAL_AUDIO_SHADERS = ['tunnel-lights', 'sacred-vessels', 'infinite-light', 'platonic-solids', 'ascension-testing'];
+const POSITIONAL_AUDIO_SHADERS = ['tunnel-lights', 'sacred-vessels', 'infinite-light', 'platonic-solids', 'ascension-testing', 'transcendent-domain'];
 
 function getAudioBufferForShader(shaderId: string): AudioBuffer | null {
   return audioBuffers[shaderId] || audioBuffers['default'] || null;
@@ -591,6 +595,9 @@ function BackgroundMusic({ shouldPlay, shaderId, headRotationY = 0 }: Background
     } else if (shaderId === 'platonic-solids') {
       // Centered, in front - where the solids appear
       audioPosition = [0, 0, -6];
+    } else if (shaderId === 'transcendent-domain') {
+      // Surrounding immersive - slightly ahead and centered
+      audioPosition = [0, 0, -20];
     } else {
       audioPosition = [0, 0, -100];
     }
@@ -687,7 +694,12 @@ function VRIntroAnimator({ started, onProgress, onComplete, shaderId }: VRIntroA
     const elapsed = Date.now() - startTimeRef.current;
 
     // Shader-specific intro durations
-    const duration = (shaderId === 'infinite-light' || shaderId === 'platonic-solids') ? 35000 : 8000;
+    let duration = 8000;
+    if (shaderId === 'infinite-light' || shaderId === 'platonic-solids') {
+      duration = 35000;
+    } else if (shaderId === 'transcendent-domain') {
+      duration = 12000; // 12 second contemplative fade-in
+    }
     const linearProgress = Math.min(1, elapsed / duration);
 
     // Apply easing curve based on shader
@@ -695,6 +707,9 @@ function VRIntroAnimator({ started, onProgress, onComplete, shaderId }: VRIntroA
     if (shaderId === 'infinite-light') {
       // Ease-in-cubic: very slow start, accelerates dramatically (t^3)
       progress = linearProgress * linearProgress * linearProgress;
+    } else if (shaderId === 'transcendent-domain') {
+      // Ease-in-quad: gentle slow start for cosmic emergence
+      progress = linearProgress * linearProgress;
     } else {
       progress = linearProgress;
     }
@@ -777,7 +792,7 @@ function App() {
   }, []);
 
   // Calculate effective brightness (intro affects it for abstract-waves and tunnel-lights)
-  const hasIntro = selectedShader === 'abstract-waves' || selectedShader === 'tunnel-lights' || selectedShader === 'infinite-light' || selectedShader === 'sacred-vessels' || selectedShader === 'platonic-solids' || selectedShader === 'ascension-testing';
+  const hasIntro = selectedShader === 'abstract-waves' || selectedShader === 'tunnel-lights' || selectedShader === 'infinite-light' || selectedShader === 'sacred-vessels' || selectedShader === 'platonic-solids' || selectedShader === 'ascension-testing' || selectedShader === 'transcendent-domain';
   const isInIntro = vrIntroStarted && hasIntro && !introComplete;
   const introBrightness = 0.1 + 0.9 * introProgress; // 0.1 → 1.0
   const brightness = isInIntro ? introBrightness * baseBrightness : baseBrightness;
