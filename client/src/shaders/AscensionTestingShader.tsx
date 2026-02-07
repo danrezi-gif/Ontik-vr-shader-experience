@@ -22,6 +22,7 @@ const fragmentShader = `
   uniform float iBrightness;
   uniform float iIntroProgress;
   uniform float iColorShift;
+  uniform float iAudioTime;
   varying vec3 vWorldPosition;
   varying vec2 vUv;
 
@@ -71,6 +72,28 @@ const fragmentShader = `
     // === ASCENDING MOVEMENT ===
     float ascentSpeed = iTime * 0.08;
     float ascentY = uv.y + ascentSpeed;
+
+    // === EDGE WRAP GLOWING LINE (at UV seam where uv.x = ±1) ===
+    float edgeDist = min(abs(uv.x - 1.0), abs(uv.x + 1.0));
+
+    // Flowing glow along the edge
+    float edgeFlow = fbm(vec2(ascentY * 8.0 - iTime * 0.5, iTime * 0.3));
+    float edgePulse = sin(ascentY * 15.0 - iTime * 2.0) * 0.5 + 0.5;
+
+    // Core glow line
+    float edgeGlow = exp(-edgeDist * edgeDist * 800.0) * (1.5 + edgeFlow * 0.8);
+    // Outer soft glow
+    float edgeSoftGlow = exp(-edgeDist * edgeDist * 100.0) * 0.4;
+    // Pulsing particles along edge
+    float edgeParticles = smoothstep(0.6, 0.9, noise(vec2(uv.x * 50.0, ascentY * 20.0 - iTime * 2.0))) * exp(-edgeDist * 20.0);
+
+    // Edge color - ethereal cyan-white
+    vec3 edgeColor = vec3(0.6, 0.9, 1.0);
+    vec3 edgeCoreColor = vec3(1.0, 1.0, 1.0);
+    float edgeCoreMix = exp(-edgeDist * edgeDist * 2000.0);
+    vec3 finalEdgeColor = mix(edgeColor, edgeCoreColor, edgeCoreMix);
+
+    col += finalEdgeColor * (edgeGlow + edgeSoftGlow + edgeParticles * 0.5) * (0.8 + edgePulse * 0.2);
 
     // === ORGANIC WATERY LIGHT STREAMS ===
     float numColumns = 5.0;
@@ -145,6 +168,76 @@ const fragmentShader = `
       col += finalColor * intensity * 0.45;
     }
 
+    // === AT 1:45 (105s) - GLOWING LIGHTS + MULTICOLORED FOG IN BLACK SECTIONS ===
+    float glowPhase = smoothstep(105.0, 108.0, iAudioTime); // Fade in over 3 seconds
+
+    if(glowPhase > 0.0) {
+      // Calculate darkness mask - where the scene is currently dark/black
+      float currentBrightness = (col.r + col.g + col.b) / 3.0;
+      float darkMask = 1.0 - smoothstep(0.0, 0.15, currentBrightness);
+
+      // === GLOWING ORBS OF LIGHT ===
+      for(float k = 0.0; k < 6.0; k++) {
+        float orbAngle = k / 6.0 * 6.28318 + iTime * 0.1 + sin(iTime * 0.3 + k) * 0.5;
+        float orbX = orbAngle / 3.14159;
+        float orbY = sin(iTime * 0.2 + k * 1.7) * 0.3 + 0.2;
+
+        // Wrap orbX
+        orbX = mod(orbX + 1.0, 2.0) - 1.0;
+
+        float orbDistX = abs(uv.x - orbX);
+        orbDistX = min(orbDistX, abs(uv.x - orbX + 2.0));
+        orbDistX = min(orbDistX, abs(uv.x - orbX - 2.0));
+        float orbDistY = abs(uv.y - orbY);
+        float orbDist = sqrt(orbDistX * orbDistX + orbDistY * orbDistY);
+
+        // Pulsing glow
+        float orbPulse = 0.8 + 0.3 * sin(iTime * 2.0 + k * 2.5);
+        float orbGlow = exp(-orbDist * orbDist * 50.0) * orbPulse;
+
+        // Orb color - warm golden/white
+        vec3 orbColor = vec3(1.0, 0.9, 0.7);
+        col += orbColor * orbGlow * glowPhase * 0.6;
+      }
+
+      // === MULTICOLORED VERTICAL FOG LIGHTS IN BLACK SECTIONS ===
+      for(float m = 0.0; m < 8.0; m++) {
+        // Position fog columns between the main light streams
+        float fogAngle = (m / 8.0) * 6.28318 + 0.3;
+        float fogX = fogAngle / 3.14159;
+        fogX = mod(fogX + 1.0, 2.0) - 1.0;
+
+        float fogDistX = abs(uv.x - fogX);
+        fogDistX = min(fogDistX, abs(uv.x - fogX + 2.0));
+        fogDistX = min(fogDistX, abs(uv.x - fogX - 2.0));
+
+        // Wide, soft vertical fog band
+        float fogWidth = 0.12 + 0.04 * sin(m * 2.0 + iTime * 0.2);
+        float fogMask = exp(-fogDistX * fogDistX / (fogWidth * fogWidth));
+
+        // Vertical flowing texture
+        float fogFlow = fbm(vec2(uv.x * 3.0 + m, ascentY * 2.0 - iTime * 0.3));
+        float fogDensity = fogFlow * 0.6 + 0.4;
+
+        // Multicolored - each column has different hue
+        float hue = m / 8.0 + iTime * 0.05;
+        vec3 fogColor;
+        // HSV to RGB approximation
+        fogColor.r = abs(fract(hue) * 6.0 - 3.0) - 1.0;
+        fogColor.g = abs(fract(hue + 0.333) * 6.0 - 3.0) - 1.0;
+        fogColor.b = abs(fract(hue + 0.666) * 6.0 - 3.0) - 1.0;
+        fogColor = clamp(fogColor, 0.0, 1.0);
+        // Desaturate slightly for softer look
+        fogColor = mix(vec3(0.5), fogColor, 0.5);
+        // Add some brightness
+        fogColor = fogColor * 0.7 + 0.3;
+
+        // Apply fog only in dark areas, with vertical coverage
+        float verticalCoverage = smoothstep(-0.8, 0.0, uv.y) * smoothstep(1.2, 0.5, uv.y);
+        col += fogColor * fogMask * fogDensity * darkMask * glowPhase * verticalCoverage * 0.25;
+      }
+    }
+
     // Apply brightness and intro
     col *= iBrightness * iIntroProgress;
 
@@ -184,7 +277,8 @@ export function AscensionTestingShader({
     iTime: { value: 0 },
     iBrightness: { value: brightness },
     iIntroProgress: { value: introProgress },
-    iColorShift: { value: colorShift }
+    iColorShift: { value: colorShift },
+    iAudioTime: { value: audioTime }
   }), []);
 
   useFrame((state) => {
@@ -194,6 +288,7 @@ export function AscensionTestingShader({
       material.uniforms.iBrightness.value = brightness;
       material.uniforms.iIntroProgress.value = introProgress;
       material.uniforms.iColorShift.value = colorShift;
+      material.uniforms.iAudioTime.value = audioTime;
     }
   });
 
