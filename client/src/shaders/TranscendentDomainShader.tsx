@@ -2,23 +2,16 @@ import { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
-// TRANSCENDENT DOMAIN - Infinite falling through a crimson void
-// Walls on left and right, blackness ahead, flowing downward, accelerating
+// TRANSCENDENT DOMAIN - Moving forward through an infinite crimson corridor
+// Seamless glowing red walls on left and right, glaring light ahead
 
 const vertexShader = `
-  varying vec2 vUv;
-  varying vec3 vPosition;
   varying vec3 vWorldPosition;
-  varying float vAngle;
+  varying vec2 vUv;
 
   void main() {
-    vUv = uv;
-    vPosition = position;
     vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
-
-    // Calculate angle around cylinder (0 = front, PI = back, PI/2 = sides)
-    vAngle = atan(position.x, position.z);
-
+    vUv = uv;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
@@ -32,128 +25,163 @@ const fragmentShader = `
   uniform float iAcceleration;
   uniform float iElapsedTime;
 
-  varying vec2 vUv;
-  varying vec3 vPosition;
   varying vec3 vWorldPosition;
-  varying float vAngle;
+  varying vec2 vUv;
 
-  // Noise functions for organic flow
+  // Hash function for randomness
   float hash(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
   }
 
-  float noise(vec2 p) {
-    vec2 i = floor(p);
-    vec2 f = fract(p);
-    f = f * f * (3.0 - 2.0 * f);
-
-    float a = hash(i);
-    float b = hash(i + vec2(1.0, 0.0));
-    float c = hash(i + vec2(0.0, 1.0));
-    float d = hash(i + vec2(1.0, 1.0));
-
-    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
-  }
-
-  float fbm(vec2 p) {
-    float value = 0.0;
-    float amplitude = 0.5;
-    float frequency = 1.0;
-
-    for(int i = 0; i < 5; i++) {
-      value += amplitude * noise(p * frequency);
-      amplitude *= 0.5;
-      frequency *= 2.0;
-    }
-    return value;
+  // ACES tonemapping for smooth HDR glow
+  vec3 ACESFilm(vec3 x) {
+    float a = 2.51;
+    float b = 0.03;
+    float c = 2.43;
+    float d = 0.59;
+    float e = 0.14;
+    return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
   }
 
   void main() {
-    // Calculate how much we're looking at the sides vs front/back
-    // vAngle: 0 = front, +/-PI = back, +/-PI/2 = sides
-    float sideAmount = abs(sin(vAngle)); // 1 at sides, 0 at front/back
-    float frontBack = abs(cos(vAngle)); // 1 at front/back, 0 at sides
-
-    // Fade to black toward front and back
-    float wallVisibility = smoothstep(0.3, 0.7, sideAmount);
+    vec3 rd = normalize(vWorldPosition);
+    vec3 col = vec3(0.0);
 
     // Calculate speed with acceleration over time
     float currentSpeed = iSpeed * (1.0 + iAcceleration * iElapsedTime * 0.1);
-    currentSpeed = min(currentSpeed, 5.0); // Cap at 5x
+    currentSpeed = min(currentSpeed, 5.0);
 
-    // Flowing downward motion
-    float flowTime = iTime * currentSpeed;
-    vec2 flowUv = vec2(vUv.x, vUv.y * 10.0 - flowTime);
+    // Forward motion along Z axis (moving forward through corridor)
+    float forwardMotion = iTime * currentSpeed * 3.0;
 
-    // Create flowing patterns on walls
-    float flow1 = fbm(flowUv * 2.0);
-    float flow2 = fbm(flowUv * 4.0 + vec2(100.0, 0.0));
-    float flow3 = fbm(flowUv * 1.0 + vec2(0.0, 50.0));
+    // Wall parameters
+    float wallDistance = 8.0;     // How far left/right the walls are
+    float maxDist = 200.0;        // How far to raymarch
 
-    // Vertical streaks (like rain or falling streams)
-    float streakX = fract(vUv.x * 20.0);
-    float streak = smoothstep(0.4, 0.5, streakX) * smoothstep(0.6, 0.5, streakX);
-    float streakFlow = fbm(vec2(vUv.x * 20.0, flowUv.y * 0.5));
-    streak *= streakFlow;
+    // Point light at the end of the corridor
+    vec3 lightColor = vec3(1.0, 0.95, 0.9);  // Warm white glare
 
-    // Combine flows
-    float pattern = flow1 * 0.5 + flow2 * 0.3 + streak * 0.4;
+    // Raymarch through the scene
+    float t = 0.5;
+    float totalWallContrib = 0.0;
 
-    // Color gradient: crimson red to light tones
-    // Base: deep crimson (#DC143C) = vec3(0.86, 0.08, 0.24)
-    // Light: warm white/pink = vec3(1.0, 0.9, 0.85)
-    vec3 deepCrimson = vec3(0.55, 0.0, 0.1);
-    vec3 brightCrimson = vec3(0.86, 0.08, 0.24);
-    vec3 lightTone = vec3(1.0, 0.85, 0.8);
+    for(int i = 0; i < 80; i++) {
+      vec3 p = rd * t;
 
-    // Evolve palette based on speed/time
-    float paletteEvolution = min(1.0, iElapsedTime * 0.02); // Slowly shifts lighter
+      // Apply forward motion (walls move backward as we move forward)
+      p.z -= forwardMotion;
 
-    vec3 baseColor = mix(deepCrimson, brightCrimson, paletteEvolution);
-    vec3 highlightColor = mix(brightCrimson, lightTone, paletteEvolution);
+      // Check distance to left and right wall planes
+      float leftWallDist = abs(p.x + wallDistance);
+      float rightWallDist = abs(p.x - wallDistance);
 
-    // Apply pattern to color
-    vec3 wallColor = mix(baseColor, highlightColor, pattern);
+      // Which wall are we closer to?
+      float wallDist = min(leftWallDist, rightWallDist);
+      float isLeftWall = step(leftWallDist, rightWallDist);
 
-    // Add glow intensity based on pattern peaks
-    float glow = pow(pattern, 2.0) * 0.5;
-    wallColor += highlightColor * glow;
+      // Seamless walls - continuous surface with flowing texture
+      float wallZ = p.z;
 
-    // === CENTER PULSATING GLOW ===
-    // Only appears as speed increases
-    float speedFactor = smoothstep(0.0, 3.0, currentSpeed);
+      // Create seamless flowing pattern along the walls
+      float flowPattern = sin(wallZ * 0.15 + iTime * 0.5) * 0.5 + 0.5;
+      float flowPattern2 = sin(wallZ * 0.08 - iTime * 0.3) * 0.5 + 0.5;
+      float combinedFlow = mix(flowPattern, flowPattern2, 0.5);
 
-    // Pulsation
-    float pulseFreq = 1.0 + currentSpeed * 0.5;
-    float pulse = 0.5 + 0.5 * sin(iTime * pulseFreq * 3.14159);
-    pulse = 0.6 + 0.4 * pulse; // Keep it mostly visible when active
+      // Close enough to wall plane? (seamless - always hit if near wall)
+      float wallProximity = smoothstep(2.0, 0.0, wallDist);
 
-    // Glow is visible when looking toward front (blackness direction)
-    // but only after speed builds up
-    float glowIntensity = frontBack * speedFactor * pulse;
+      // Wall hit - seamless continuous wall
+      float wallHit = wallProximity;
 
-    // Central glow color - warm light emerging from void
-    vec3 glowColor = mix(vec3(0.8, 0.2, 0.1), vec3(1.0, 0.6, 0.4), pulse);
+      if (wallHit > 0.01) {
+        // Use position for subtle variation
+        vec2 cellId = vec2(isLeftWall, floor(wallZ * 0.1));
+        float h = hash(cellId);
+        float h2 = hash(cellId + vec2(100.0, 0.0));
 
-    // Radial falloff for center glow (stronger at very center)
-    float centerY = abs(vUv.y - 0.5) * 2.0;
-    float radialFalloff = 1.0 - smoothstep(0.0, 0.6, centerY);
-    glowIntensity *= radialFalloff;
+        // Strong crimson/red color palette
+        vec3 deepRed = vec3(0.7, 0.0, 0.05);
+        vec3 brightRed = vec3(1.0, 0.1, 0.08);
+        vec3 hotRed = vec3(1.0, 0.3, 0.1);
 
-    // Combine wall color with void (front/back)
-    vec3 finalColor = wallColor * wallVisibility;
+        // Palette evolution over time
+        float paletteEvolution = min(1.0, iElapsedTime * 0.015);
 
-    // Add center glow to the dark areas
-    finalColor += glowColor * glowIntensity * (1.0 - wallVisibility) * 0.8;
+        // Base wall color with smooth variation
+        vec3 wallColor = mix(deepRed, brightRed, combinedFlow * 0.6 + 0.2);
+        wallColor = mix(wallColor, hotRed, paletteEvolution * 0.5);
+
+        // Glow intensity based on flow pattern
+        float glowPattern = pow(combinedFlow, 0.5) * 0.8 + 0.2;
+
+        // Subtle pulsing
+        float pulsePhase = h2 * 6.28 + iTime * (0.8 + currentSpeed * 0.2);
+        float pulse = 0.85 + 0.15 * sin(pulsePhase);
+
+        // Edge glow (brighter near wall edge)
+        float edgeGlow = smoothstep(0.5, 0.0, wallDist) * 1.5;
+
+        // Combine glow
+        float totalGlow = glowPattern * pulse + edgeGlow * 0.4;
+
+        // Apply glow to color - stronger emission
+        vec3 glowColor = mix(wallColor, hotRed, totalGlow * 0.4);
+        glowColor *= (1.5 + totalGlow * 1.2);
+
+        // Distance falloff
+        float distFade = 1.0 / (1.0 + t * 0.012);
+
+        // Accumulate color
+        col += glowColor * wallHit * distFade * 0.35;
+        totalWallContrib += wallHit * distFade;
+      }
+
+      // Step forward
+      t += max(wallDist * 0.25, 0.5);
+      if (t > maxDist) break;
+    }
+
+    // Add the glaring point light at the end
+    // Calculate angle to light direction (forward = +Z in view space)
+    float lookAtLight = max(0.0, rd.z);  // How much we're looking forward
+
+    // Core glare - tight, intense center
+    float coreGlare = pow(lookAtLight, 64.0) * 1.5;
+
+    // Medium bloom
+    float mediumBloom = pow(lookAtLight, 16.0) * 0.8;
+
+    // Wide atmospheric bloom
+    float wideBloom = pow(lookAtLight, 4.0) * 0.2;
+
+    // Combine light contributions
+    float totalLight = coreGlare + mediumBloom + wideBloom;
+
+    // Light color - warm white with slight red tint from walls
+    vec3 glareColor = lightColor * totalLight;
+    glareColor += vec3(1.0, 0.2, 0.1) * mediumBloom * 0.3;  // Red reflection from walls
+
+    col += glareColor;
+
+    // Add atmospheric glow toward the walls
+    float sideGlow = smoothstep(0.2, 0.9, abs(rd.x));
+    vec3 ambientRed = vec3(0.4, 0.02, 0.03);
+    col += ambientRed * sideGlow * 0.4;
+
+    // Subtle light scatter in the corridor
+    float scatter = pow(lookAtLight, 4.0) * 0.08;
+    col += vec3(1.0, 0.3, 0.2) * scatter;
 
     // Apply intro progress and brightness
-    finalColor *= iBrightness * iIntroProgress;
+    col *= iBrightness * iIntroProgress;
 
-    // Ensure black void when looking straight ahead (before speed builds)
-    float voidMask = (1.0 - wallVisibility) * (1.0 - glowIntensity);
-    finalColor = mix(finalColor, vec3(0.0), voidMask * (1.0 - speedFactor * 0.5));
+    // ACES tonemapping for smooth HDR glow
+    col = ACESFilm(col);
 
-    gl_FragColor = vec4(finalColor, 1.0);
+    // Slight contrast boost
+    col = pow(col, vec3(0.95));
+
+    gl_FragColor = vec4(col, 1.0);
   }
 `;
 
@@ -206,34 +234,20 @@ export function TranscendentDomainShader({
     }
   });
 
-  // Cylinder extending forward and backward from user
-  // User is inside the cylinder, looking at the walls on the sides
+  // Sphere for raymarching - user is inside looking at infinite walls
   return (
-    <group rotation={[0, -headRotationY, 0]}>
-      {/* Main cylinder - walls on sides */}
-      <mesh
-        ref={meshRef}
-        rotation={[Math.PI / 2, 0, 0]}
-        position={[0, 0, 0]}
-      >
-        <cylinderGeometry args={[30, 30, 1000, 64, 64, true]} />
-        <shaderMaterial
-          vertexShader={vertexShader}
-          fragmentShader={fragmentShader}
-          uniforms={uniforms}
-          side={THREE.BackSide}
-        />
-      </mesh>
-
-      {/* Black caps at top and bottom for infinite depth illusion */}
-      <mesh position={[0, 0, -500]} rotation={[0, 0, 0]}>
-        <circleGeometry args={[30, 64]} />
-        <meshBasicMaterial color="black" side={THREE.DoubleSide} />
-      </mesh>
-      <mesh position={[0, 0, 500]} rotation={[0, 0, 0]}>
-        <circleGeometry args={[30, 64]} />
-        <meshBasicMaterial color="black" side={THREE.DoubleSide} />
-      </mesh>
-    </group>
+    <mesh
+      ref={meshRef}
+      scale={[-1, 1, 1]}
+      rotation={[0, -headRotationY, 0]}
+    >
+      <sphereGeometry args={[50, 64, 64]} />
+      <shaderMaterial
+        vertexShader={vertexShader}
+        fragmentShader={fragmentShader}
+        uniforms={uniforms}
+        side={THREE.BackSide}
+      />
+    </mesh>
   );
 }
