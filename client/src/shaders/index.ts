@@ -46,12 +46,6 @@ export const SHADERS: ShaderInfo[] = [
   {
     id: 'transcendent-domain',
     name: 'Transcendent Domain',
-    description: 'Drift through infinite cosmic fractals into pure consciousness',
-    color: '#4488ff'
-  },
-  {
-    id: 'crimson-descent',
-    name: 'Crimson Descent',
     description: 'Fall through an infinite crimson void, accelerating into the unknown',
     color: '#DC143C'
   }

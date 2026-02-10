@@ -29,7 +29,7 @@
 - Identify the minimal change needed
 
 ### 6. After Making Changes
-- Build and verify no compilation errors
+- **ALWAYS ask user before running build** - never build without consent
 - Commit immediately if build succeeds
 - Push so user can test on device
 
