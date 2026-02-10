@@ -56,94 +56,68 @@ const fragmentShader = `
 
     // Wall parameters
     float wallDistance = 8.0;     // How far left/right the walls are
-    float maxDist = 600.0;        // How far to raymarch - extended for deep infinity
+    float maxDist = 400.0;        // Max raymarch distance
 
+    // Pre-compute global breathing (cheaper than per-sample)
+    float globalBreath = sin(iTime * 0.4) * 0.25;
+    float breathWave1 = sin(iTime * 0.8);
+    float breathWave2 = sin(iTime * 0.5);
 
-    // Raymarch through the scene - optimized for VR performance
+    // Raymarch - optimized for Quest 3 (max 48 iterations)
     float t = 0.5;
     float totalWallContrib = 0.0;
 
-    for(int i = 0; i < 70; i++) {
+    for(int i = 0; i < 48; i++) {
       vec3 p = rd * t;
-
-      // Apply forward motion (walls move backward as we move forward)
       p.z -= forwardMotion;
 
-      // Check distance to left and right wall planes
-      float leftWallDist = abs(p.x + wallDistance);
-      float rightWallDist = abs(p.x - wallDistance);
+      // Wall distance calculation
+      float baseWallDist = min(abs(p.x + wallDistance), abs(p.x - wallDistance));
 
-      // Which wall are we closer to?
-      float baseWallDist = min(leftWallDist, rightWallDist);
+      // Simplified breathing - uses pre-computed waves
+      vec2 wallPos = vec2(p.z * 0.1, p.y * 0.1);
+      float breathing = breathWave1 * sin(wallPos.x * 0.3) * sin(wallPos.y * 0.25) * 0.4
+                      + breathWave2 * sin(wallPos.x * 0.15 + wallPos.y * 0.2) * 0.3
+                      + globalBreath;
 
-      // Seamless walls - continuous surface with flowing texture
-      float wallZ = p.z;
-      float wallY = p.y;
-      vec2 wallPos = vec2(wallZ * 0.1, wallY * 0.1);  // Wall UV coordinates
+      float wallDist = max(0.5, baseWallDist - breathing * 1.2);
 
-      // === BREATHING/MORPHING WALLS ===
-      // Subtle displacement - keeps walls stable
-      float breathing = breathingDisplacement(wallPos, iTime);
-      float wallDisplacement = breathing * 1.2;  // Gentler displacement
-
-      // Apply breathing to wall distance with safe minimum
-      float wallDist = max(0.5, baseWallDist - wallDisplacement);
-
-      // Simple flowing pattern along the walls - stronger z-response for visible motion
-      float flowPattern = sin(wallZ * 0.25 + iTime * 0.5) * 0.5 + 0.5;
-
-      // Close enough to wall plane? (smooth falloff)
-      float wallProximity = smoothstep(3.0, 0.5, wallDist);
-
-      // Wall hit - seamless continuous wall
-      float wallHit = wallProximity;
+      // Wall proximity
+      float wallHit = smoothstep(3.0, 0.5, wallDist);
 
       if (wallHit > 0.01) {
-        // === CLEAN GRADIENT COLOR SYSTEM ===
-        // Simple flowing gradients - warm reds to magentas
-        // Stronger z-influence makes forward motion more visible
-        float colorPos = wallY * 0.12 + wallZ * 0.15 + iTime * 0.25;
+        // Color gradient
+        float colorPos = p.y * 0.12 + p.z * 0.15 + iTime * 0.25;
+        vec3 wallColor = vec3(
+          0.6 + 0.4 * sin(colorPos),
+          0.15 + 0.1 * sin(colorPos * 0.7 + 1.0),
+          0.3 + 0.25 * sin(colorPos * 1.2 + 2.0)
+        );
 
-        // Base gradient in warm spectrum
-        float r = 0.6 + 0.4 * sin(colorPos);
-        float g = 0.15 + 0.1 * sin(colorPos * 0.7 + 1.0);
-        float b = 0.3 + 0.25 * sin(colorPos * 1.2 + 2.0);
+        // Combined glow (simplified)
+        float flowPattern = sin(p.z * 0.25 + iTime * 0.5) * 0.5 + 0.5;
+        float pulse = 0.75 + 0.25 * sin(p.y * 0.3 + p.z * 0.15 + iTime * 0.8);
+        float glow = (1.0 + breathing * 0.15) * (flowPattern * 0.6 + 0.6) * pulse;
 
-        vec3 wallColor = vec3(r, g, b);
+        // Distance falloff
+        float distFade = 1.0 / (1.0 + t * 0.008);
 
-        // === BREATHING INTENSITY ===
-        // Subtle glow variation from breathing
-        float breathGlow = 1.0 + breathing * 0.15;
-        wallColor *= breathGlow;
-
-        // Glow intensity based on flow pattern
-        float glowPattern = pow(flowPattern, 0.5) * 0.8 + 0.4;
-
-        // Smooth, position-based pulsing (no abrupt changes)
-        float pulsePhase = wallY * 0.3 + wallZ * 0.15 + iTime * 0.8;
-        float pulse = 0.75 + 0.25 * sin(pulsePhase);
-
-        // Soft edge glow
-        float edgeGlow = smoothstep(1.5, 0.5, wallDist);
-
-        // Combine glow smoothly
-        float totalGlow = glowPattern * pulse + edgeGlow * 0.3;
-
-        // Apply glow to color
-        vec3 glowColor = wallColor * (1.2 + totalGlow * 0.6);
-
-        // Distance falloff - gentler for deeper infinity
-        float distFade = 1.0 / (1.0 + t * 0.005);
-
-        // Accumulate color
-        col += glowColor * wallHit * distFade * 0.4;
+        col += wallColor * glow * wallHit * distFade * 0.35;
         totalWallContrib += wallHit * distFade;
       }
 
-      // Step forward - larger steps for better performance
-      t += max(wallDist * 0.4, 1.5);
-      if (t > maxDist) break;
+      // Progressive step size - larger steps at distance for efficiency
+      float stepSize = max(wallDist * 0.5, 2.0 + t * 0.02);
+      t += stepSize;
+
+      // Early exit conditions
+      if (t > maxDist || totalWallContrib > 3.0) break;
     }
+
+    // Atmospheric depth fog - sells infinity without computing it
+    float fogDepth = 1.0 - exp(-totalWallContrib * 0.15);
+    vec3 fogColor = vec3(0.4, 0.1, 0.25);
+    col = mix(col, col + fogColor * 0.3, fogDepth * 0.4);
 
     // Forward glow - subtle ambient light ahead (no harsh glare)
     float lookAtLight = max(0.0, rd.z);  // How much we're looking forward
