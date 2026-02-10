@@ -44,6 +44,26 @@
 | Pure White | `(1.0, 1.0, 1.0)` | Cores/peaks |
 | Seam Glow | `(0.6, 0.8, 1.0)` | Transitions |
 
+### Crimson Corridor (Transcendent Domain)
+A warm red-to-magenta gradient spectrum with organic breathing walls.
+
+| Name | RGB Formula | Use Case |
+|------|-------------|----------|
+| Deep Crimson | `(1.0, 0.15, 0.3)` | Wall base low |
+| Warm Red | `(0.6, 0.15, 0.3)` to `(1.0, 0.25, 0.55)` | Wall gradient range |
+| Hot Magenta | `(0.85, 0.2, 0.55)` | Wall peaks |
+| Ambient Warmth | `(0.5, 0.15, 0.4)` | Atmospheric tint |
+| Scatter Pink | `(1.0, 0.4, 0.7)` | Light scatter |
+
+**Gradient Formula (GLSL):**
+```glsl
+float colorPos = wallY * 0.12 + wallZ * 0.06 + iTime * 0.25;
+float r = 0.6 + 0.4 * sin(colorPos);
+float g = 0.15 + 0.1 * sin(colorPos * 0.7 + 1.0);
+float b = 0.3 + 0.25 * sin(colorPos * 1.2 + 2.0);
+```
+This creates flowing, time-animated gradients that shift between warm reds and magentas.
+
 ### Golden Divine
 | Name | RGB | Use Case |
 |------|-----|----------|
@@ -57,10 +77,10 @@
 ## Experiences Using This Palette
 
 ### Transcendent Domain
-- **Wall Style:** Waterfall effect on continuous side walls
-- **Feeling:** Entering a sacred corridor/tunnel
-- **Colors:** Ethereal Blue-White palette
-- **Movement:** [TBD - direction of flow]
+- **Wall Style:** Breathing/morphing walls with organic pulsing
+- **Feeling:** Moving through an infinite crimson corridor into the unknown
+- **Colors:** Crimson Corridor palette - warm reds flowing to magentas
+- **Movement:** Constant forward motion with gradual acceleration, walls streaming past
 
 ### Ascension (The Sacred Vessels)
 - **Environment:** Spherical with 5 light columns
