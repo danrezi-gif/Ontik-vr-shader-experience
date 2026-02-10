@@ -28,11 +28,6 @@ const fragmentShader = `
   varying vec3 vWorldPosition;
   varying vec2 vUv;
 
-  // Hash function for randomness
-  float hash(vec2 p) {
-    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-  }
-
   // Breathing/Morphing wall displacement - organic bulging
   float breathingDisplacement(vec2 wallPos, float time) {
     // Multiple organic frequencies create breathing effect
@@ -49,14 +44,11 @@ const fragmentShader = `
     return breathing + deepBreath;
   }
 
-  // ACES tonemapping for smooth HDR glow
-  vec3 ACESFilm(vec3 x) {
-    float a = 2.51;
-    float b = 0.03;
-    float c = 2.43;
-    float d = 0.59;
-    float e = 0.14;
-    return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
+  // Tanh approximation for GLSL ES compatibility
+  // https://mini.gmshaders.com/p/func-tanh
+  vec3 tanhApprox(vec3 x) {
+    vec3 x2 = x * x;
+    return clamp(x * (27.0 + x2) / (27.0 + 9.0 * x2), -1.0, 1.0);
   }
 
   void main() {
@@ -93,7 +85,6 @@ const fragmentShader = `
 
       // Which wall are we closer to?
       float baseWallDist = min(leftWallDist, rightWallDist);
-      float isLeftWall = step(leftWallDist, rightWallDist);
 
       // Seamless walls - continuous surface with flowing texture
       float wallZ = p.z;
@@ -118,39 +109,33 @@ const fragmentShader = `
       float wallHit = wallProximity;
 
       if (wallHit > 0.01) {
-        // Use position for subtle variation
-        vec2 cellId = vec2(isLeftWall, floor(wallZ * 0.1));
-        float h = hash(cellId);
-        float h2 = hash(cellId + vec2(100.0, 0.0));
+        // === SMOOTH GRADIENT COLOR SYSTEM ===
+        // Position-based color that creates natural, flowing gradients
+        // Using sin with phase offsets ensures smooth color mixing (never solid colors)
+        float colorPos = wallY * 0.15 + wallZ * 0.08 + iTime * 0.3;
 
-        // === DYNAMIC COLOR CYCLING ===
-        // Multiple color palettes that shift rapidly
-        float colorCycle = iTime * 0.8;  // Fast color cycling
-        float colorPhase = fract(colorCycle);
-        float colorSection = floor(mod(colorCycle, 6.0));  // 6 color modes
+        // Phase-shifted sin waves for RGB - this guarantees smooth gradients
+        // The offsets (0, 1.0, 2.0) spread the colors across the spectrum
+        vec3 gradientColor = sin(colorPos + vec3(0.0, 1.0, 2.0)) * 0.5 + 0.5;
 
-        // Define rich color palette
-        vec3 deepRed = vec3(0.8, 0.0, 0.1);
-        vec3 hotOrange = vec3(1.0, 0.4, 0.0);
-        vec3 electricPurple = vec3(0.6, 0.0, 1.0);
-        vec3 magenta = vec3(1.0, 0.0, 0.5);
-        vec3 crimson = vec3(0.9, 0.1, 0.2);
-        vec3 amber = vec3(1.0, 0.6, 0.1);
+        // Shift toward warm palette (reds, oranges, magentas, purples)
+        // Remap to desired color range while keeping smooth gradients
+        vec3 warmShift = vec3(
+          gradientColor.r * 0.6 + 0.4,                           // Red: 0.4-1.0
+          gradientColor.g * gradientColor.r * 0.5,               // Green: modulated by red for oranges
+          gradientColor.b * 0.7 + gradientColor.r * 0.3          // Blue: for magentas/purples
+        );
 
-        // Smooth color transitions based on time
-        vec3 color1, color2;
-        if (colorSection < 1.0) { color1 = deepRed; color2 = hotOrange; }
-        else if (colorSection < 2.0) { color1 = hotOrange; color2 = magenta; }
-        else if (colorSection < 3.0) { color1 = magenta; color2 = electricPurple; }
-        else if (colorSection < 4.0) { color1 = electricPurple; color2 = crimson; }
-        else if (colorSection < 5.0) { color1 = crimson; color2 = amber; }
-        else { color1 = amber; color2 = deepRed; }
+        // Add secondary wave for more complex gradient patterns
+        float colorPos2 = wallY * 0.22 - wallZ * 0.12 + iTime * 0.2;
+        vec3 secondaryGradient = sin(colorPos2 + vec3(0.5, 1.5, 2.5)) * 0.5 + 0.5;
 
-        // Smooth interpolation between colors
-        vec3 cycleColor = mix(color1, color2, smoothstep(0.0, 1.0, colorPhase));
+        // Blend the two gradient systems for rich, organic color flow
+        vec3 wallColor = mix(warmShift, secondaryGradient * vec3(1.0, 0.3, 0.6), 0.35);
 
-        // Base wall color
-        vec3 wallColor = cycleColor;
+        // Ensure we stay in warm spectrum - boost reds, limit greens
+        wallColor.r = max(wallColor.r, 0.3);
+        wallColor.g = min(wallColor.g, wallColor.r * 0.7);
 
         // === BREATHING INTENSITY ===
         // Walls glow brighter when they bulge toward you (never darken)
@@ -160,15 +145,15 @@ const fragmentShader = `
         // Glow intensity based on flow pattern
         float glowPattern = pow(flowPattern, 0.5) * 0.8 + 0.4;
 
-        // Faster pulsing
-        float pulsePhase = h2 * 6.28 + iTime * (1.5 + currentSpeed * 0.4);
-        float pulse = 0.7 + 0.3 * sin(pulsePhase);
+        // Smooth, position-based pulsing (no abrupt changes)
+        float pulsePhase = wallY * 0.3 + wallZ * 0.15 + iTime * 0.8;
+        float pulse = 0.75 + 0.25 * sin(pulsePhase);
 
-        // Edge glow (brighter near wall edge) - STRONGER
-        float edgeGlow = smoothstep(0.8, 0.0, wallDist) * 2.0;
+        // Edge glow (brighter near wall edge)
+        float edgeGlow = smoothstep(1.0, 0.0, wallDist) * 1.5;
 
-        // Combine glow
-        float totalGlow = glowPattern * pulse + edgeGlow * 0.6;
+        // Combine glow smoothly
+        float totalGlow = glowPattern * pulse + edgeGlow * 0.5;
 
         // Apply glow to color
         vec3 glowColor = wallColor * (1.5 + totalGlow * 1.0);
@@ -208,29 +193,29 @@ const fragmentShader = `
 
     col += glareColor;
 
-    // Add atmospheric glow toward the walls - DYNAMIC COLOR
+    // Add atmospheric glow toward the walls - smooth gradient colors
     float sideGlow = smoothstep(0.2, 0.9, abs(rd.x));
-    float ambientCycle = iTime * 0.6;
-    vec3 ambientColor = mix(
-      vec3(0.4, 0.02, 0.2),  // Purple-red
-      vec3(0.5, 0.2, 0.02),  // Orange
-      sin(ambientCycle) * 0.5 + 0.5
-    );
+    // Smooth ambient gradient based on view direction and time
+    float ambientPhase = rd.y * 2.0 + iTime * 0.25;
+    vec3 ambientGradient = sin(ambientPhase + vec3(0.0, 1.2, 2.4)) * 0.5 + 0.5;
+    vec3 ambientColor = ambientGradient * vec3(0.5, 0.15, 0.4); // Warm tint
     col += ambientColor * sideGlow * 0.5;
 
-    // Light scatter in the corridor - color shifts
+    // Light scatter in the corridor - smooth gradient shifts
     float scatter = pow(lookAtLight, 4.0) * 0.12;
-    vec3 scatterColor = mix(vec3(1.0, 0.3, 0.2), vec3(0.8, 0.2, 1.0), sin(iTime * 0.8) * 0.5 + 0.5);
+    float scatterPhase = iTime * 0.2 + rd.x * 1.5;
+    vec3 scatterGradient = sin(scatterPhase + vec3(0.0, 0.8, 1.6)) * 0.5 + 0.5;
+    vec3 scatterColor = scatterGradient * vec3(1.0, 0.4, 0.7);
     col += scatterColor * scatter;
 
     // Apply intro progress and brightness
     col *= iBrightness * iIntroProgress;
 
-    // ACES tonemapping for smooth HDR glow
-    col = ACESFilm(col);
+    // Tanh tonemapping for smooth HDR (from reference shader)
+    col = tanhApprox(col * col * 0.5);
 
-    // Slight contrast boost
-    col = pow(col, vec3(0.95));
+    // Slight warmth boost
+    col.r = pow(col.r, 0.92);
 
     gl_FragColor = vec4(col, 1.0);
   }
