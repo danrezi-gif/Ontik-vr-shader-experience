@@ -32,18 +32,6 @@ export const SHADERS: ShaderInfo[] = [
     color: '#6699ff'
   },
   {
-    id: 'platonic-solids',
-    name: 'Transcendent Objects',
-    description: 'Void and Form are one',
-    color: '#aa66ff'
-  },
-  {
-    id: 'ascension-testing',
-    name: 'Ascension Testing',
-    description: 'Development sandbox - building Ascension step by step',
-    color: '#66ffcc'
-  },
-  {
     id: 'transcendent-domain',
     name: 'Transcendent Domain',
     description: 'Fall through an infinite crimson void, accelerating into the unknown',
