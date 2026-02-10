@@ -33,22 +33,18 @@ const fragmentShader = `
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
   }
 
-  // Breathing/Morphing wall displacement - DRAMATIC organic bulging
+  // Breathing/Morphing wall displacement - organic bulging
   float breathingDisplacement(vec2 wallPos, float time) {
-    // Multiple organic frequencies create breathing effect - FASTER and BIGGER
-    float breath1 = sin(wallPos.x * 0.5 + time * 1.4) * sin(wallPos.y * 0.4 + time * 1.0);
-    float breath2 = sin(wallPos.x * 0.25 - time * 0.8) * sin(wallPos.y * 0.35 + time * 1.2);
-    float breath3 = sin(wallPos.x * 0.8 + wallPos.y * 0.5 + time * 1.6);
+    // Multiple organic frequencies create breathing effect
+    float breath1 = sin(wallPos.x * 0.4 + time * 1.2) * sin(wallPos.y * 0.3 + time * 0.9);
+    float breath2 = sin(wallPos.x * 0.2 - time * 0.7) * sin(wallPos.y * 0.25 + time * 1.0);
+    float breath3 = sin(wallPos.x * 0.6 + wallPos.y * 0.4 + time * 1.3);
 
-    // Aggressive warping - walls twist and bulge dramatically
-    float warp1 = sin(wallPos.x * 1.2 + time * 2.0) * cos(wallPos.y * 0.8 - time * 1.5);
-    float warp2 = cos(wallPos.x * 0.6 - time * 1.8) * sin(wallPos.y * 1.4 + time * 2.2);
+    // Combine for organic, living wall movement
+    float breathing = breath1 * 0.5 + breath2 * 0.35 + breath3 * 0.25;
 
-    // Combine for intense, living wall movement
-    float breathing = breath1 * 0.6 + breath2 * 0.4 + breath3 * 0.3 + warp1 * 0.5 + warp2 * 0.4;
-
-    // Deep "inhale/exhale" rhythm - faster
-    float deepBreath = sin(time * 0.6) * 0.5;
+    // Deep "inhale/exhale" rhythm
+    float deepBreath = sin(time * 0.5) * 0.4;
 
     return breathing + deepBreath;
   }
@@ -131,9 +127,9 @@ const fragmentShader = `
       vec2 wallPos = vec2(wallZ * 0.1, wallY * 0.1);  // Wall UV coordinates
 
       // === BREATHING/MORPHING WALLS ===
-      // Organic displacement makes walls bulge and breathe - DRAMATIC
+      // Organic displacement makes walls bulge and breathe
       float breathing = breathingDisplacement(wallPos, iTime);
-      float wallDisplacement = breathing * 4.0;  // Much bigger bulges
+      float wallDisplacement = breathing * 2.5;  // Noticeable but smooth bulges
 
       // Apply breathing to wall distance (walls push in/out)
       float wallDist = baseWallDist - wallDisplacement;
