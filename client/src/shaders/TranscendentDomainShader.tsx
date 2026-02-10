@@ -33,6 +33,43 @@ const fragmentShader = `
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
   }
 
+  // Breathing/Morphing wall displacement - organic bulging
+  float breathingDisplacement(vec2 wallPos, float time) {
+    // Multiple organic frequencies create breathing effect
+    float breath1 = sin(wallPos.x * 0.3 + time * 0.7) * sin(wallPos.y * 0.2 + time * 0.5);
+    float breath2 = sin(wallPos.x * 0.15 - time * 0.4) * sin(wallPos.y * 0.25 + time * 0.6);
+    float breath3 = sin(wallPos.x * 0.5 + wallPos.y * 0.3 + time * 0.8);
+
+    // Combine for organic, living wall movement
+    float breathing = breath1 * 0.5 + breath2 * 0.3 + breath3 * 0.2;
+
+    // Add slow, deep "inhale/exhale" rhythm
+    float deepBreath = sin(time * 0.3) * 0.3;
+
+    return breathing + deepBreath;
+  }
+
+  // Moiré interference pattern - overlapping waves creating optical shimmer
+  float moirePattern(vec2 wallPos, float time) {
+    // Multiple wave sets at slightly different angles/frequencies
+    float wave1 = sin(wallPos.x * 2.0 + wallPos.y * 0.5 + time * 0.4);
+    float wave2 = sin(wallPos.x * 2.1 - wallPos.y * 0.48 + time * 0.35);
+    float wave3 = sin(wallPos.x * 1.0 + wallPos.y * 2.0 - time * 0.3);
+    float wave4 = sin(wallPos.x * 1.05 - wallPos.y * 1.95 + time * 0.25);
+
+    // Interference from overlapping similar frequencies
+    float interference1 = wave1 * wave2;  // Creates beating pattern
+    float interference2 = wave3 * wave4;
+
+    // Additional diagonal waves for richer moiré
+    float diag1 = sin((wallPos.x + wallPos.y) * 1.5 + time * 0.5);
+    float diag2 = sin((wallPos.x + wallPos.y) * 1.55 - time * 0.45);
+    float diagInterference = diag1 * diag2;
+
+    // Combine all interference patterns
+    return (interference1 + interference2 + diagInterference) * 0.33;
+  }
+
   // ACES tonemapping for smooth HDR glow
   vec3 ACESFilm(vec3 x) {
     float a = 2.51;
@@ -76,16 +113,32 @@ const fragmentShader = `
       float rightWallDist = abs(p.x - wallDistance);
 
       // Which wall are we closer to?
-      float wallDist = min(leftWallDist, rightWallDist);
+      float baseWallDist = min(leftWallDist, rightWallDist);
       float isLeftWall = step(leftWallDist, rightWallDist);
 
       // Seamless walls - continuous surface with flowing texture
       float wallZ = p.z;
+      float wallY = p.y;
+      vec2 wallPos = vec2(wallZ * 0.1, wallY * 0.1);  // Wall UV coordinates
+
+      // === BREATHING/MORPHING WALLS ===
+      // Organic displacement makes walls bulge and breathe
+      float breathing = breathingDisplacement(wallPos, iTime);
+      float wallDisplacement = breathing * 1.5;  // Amplitude of the bulge
+
+      // Apply breathing to wall distance (walls push in/out)
+      float wallDist = baseWallDist - wallDisplacement;
+
+      // === MOIRÉ INTERFERENCE PATTERN ===
+      float moire = moirePattern(wallPos, iTime);
 
       // Create seamless flowing pattern along the walls
       float flowPattern = sin(wallZ * 0.15 + iTime * 0.5) * 0.5 + 0.5;
       float flowPattern2 = sin(wallZ * 0.08 - iTime * 0.3) * 0.5 + 0.5;
       float combinedFlow = mix(flowPattern, flowPattern2, 0.5);
+
+      // Combine flow with moiré for shimmering effect
+      combinedFlow = combinedFlow + moire * 0.4;
 
       // Close enough to wall plane? (seamless - always hit if near wall)
       float wallProximity = smoothstep(2.0, 0.0, wallDist);
@@ -110,6 +163,17 @@ const fragmentShader = `
         // Base wall color with smooth variation
         vec3 wallColor = mix(deepRed, brightRed, combinedFlow * 0.6 + 0.2);
         wallColor = mix(wallColor, hotRed, paletteEvolution * 0.5);
+
+        // === MOIRÉ SHIMMER ON COLOR ===
+        // Add shimmering color variation from interference pattern
+        float moireShimmer = moire * 0.5 + 0.5;  // Normalize to 0-1
+        vec3 shimmerColor = mix(deepRed, vec3(1.0, 0.4, 0.2), moireShimmer * 0.3);
+        wallColor = mix(wallColor, shimmerColor, 0.4);
+
+        // === BREATHING INTENSITY ===
+        // Walls glow brighter when they bulge toward you
+        float breathGlow = breathing * 0.3 + 1.0;
+        wallColor *= breathGlow;
 
         // Glow intensity based on flow pattern
         float glowPattern = pow(combinedFlow, 0.5) * 0.8 + 0.2;
