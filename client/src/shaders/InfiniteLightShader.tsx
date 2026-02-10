@@ -252,8 +252,8 @@ const fragmentShader = `
       }
     }
 
-    // === JOURNEY GRIDS (phases 0-3, not past all phases) ===
-    if (introComplete > 0.0 && currentPhase <= 3 && finalPhaseEnding < 0.8 && !isPastAllPhases) {
+    // === JOURNEY GRIDS (phases 0-3, stop when white transition begins) ===
+    if (introComplete > 0.0 && currentPhase <= 3 && finalPhaseEnding <= 0.0 && !isPastAllPhases) {
       float baseSpacing = getSpacing(currentPhase);
 
       // Grid becomes increasingly sparse as user approaches light
@@ -354,18 +354,22 @@ const fragmentShader = `
     }
 
     // === FINAL WHITE OVERRIDE ===
-    // This is the absolute last check - when past all phases, force pure white
-    // regardless of anything that may have been rendered above
-    if (isPastAllPhases) {
-      col = vec3(1.0, 1.0, 1.0) * 3.0;
+    // When white transition has started, blend toward pure white
+    // This ensures no other colors leak through
+    if (finalPhaseEnding > 0.0 || isPastAllPhases) {
+      float whiteAmount = isPastAllPhases ? 1.0 : smoothstep(0.0, 0.5, finalPhaseEnding);
+      col = mix(col, vec3(1.0, 1.0, 1.0) * 2.5, whiteAmount);
     }
 
-    // Apply brightness
-    col *= iBrightness * 0.8;
-    col.b += iColorShift * 0.05;
+    // Apply brightness (skip if fully white to preserve pure white)
+    if (!isPastAllPhases) {
+      col *= iBrightness * 0.8;
+      col.b += iColorShift * 0.05;
+    }
 
-    // Tone mapping
-    col = col / (col + vec3(0.8));
+    // Tone mapping (gentler for white to preserve brightness)
+    float tonemapStrength = isPastAllPhases ? 0.3 : 0.8;
+    col = col / (col + vec3(tonemapStrength));
     col = pow(col, vec3(0.9));
 
     gl_FragColor = vec4(col, 1.0);
