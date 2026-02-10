@@ -22,15 +22,12 @@ Situated at the intersection of consciousness research, contemplative technology
 
 **Optimal Setup:**
 
-- VR headset (Quest, PSVR, PC VR) or desktop browser
-- Headphones (essential)
-- Low ambient lighting
-- Dedicated attention (especially for the 9-minute piece)
+- VR headset (Quest, PSVR, PC VR) 
+- Dedicated attention 
 
 **Navigation:**
 
 - VR: Use controllers or gaze-based selection
-- Desktop: Mouse/keyboard controls
 
 ## Tech Stack
 
