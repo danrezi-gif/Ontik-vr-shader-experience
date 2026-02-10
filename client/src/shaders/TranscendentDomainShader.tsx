@@ -59,10 +59,7 @@ const fragmentShader = `
     float maxDist = 200.0;        // How far to raymarch
 
     // Point light at the end of the corridor
-    float lightZ = 150.0;         // Distance to the light
-    vec3 lightPos = vec3(0.0, 0.0, lightZ);
     vec3 lightColor = vec3(1.0, 0.95, 0.9);  // Warm white glare
-    float lightIntensity = 8.0;
 
     // Raymarch through the scene
     float t = 0.5;
@@ -148,21 +145,21 @@ const fragmentShader = `
     // Calculate angle to light direction (forward = +Z in view space)
     float lookAtLight = max(0.0, rd.z);  // How much we're looking forward
 
-    // Core glare - intense center
-    float coreGlare = pow(lookAtLight, 32.0) * 4.0;
+    // Core glare - tight, intense center
+    float coreGlare = pow(lookAtLight, 64.0) * 1.5;
 
     // Medium bloom
-    float mediumBloom = pow(lookAtLight, 8.0) * 2.0;
+    float mediumBloom = pow(lookAtLight, 16.0) * 0.8;
 
     // Wide atmospheric bloom
-    float wideBloom = pow(lookAtLight, 2.0) * 0.6;
+    float wideBloom = pow(lookAtLight, 4.0) * 0.2;
 
     // Combine light contributions
     float totalLight = coreGlare + mediumBloom + wideBloom;
 
     // Light color - warm white with slight red tint from walls
-    vec3 glareColor = lightColor * lightIntensity * totalLight;
-    glareColor += vec3(1.0, 0.2, 0.1) * mediumBloom * 0.5;  // Red reflection from walls
+    vec3 glareColor = lightColor * totalLight;
+    glareColor += vec3(1.0, 0.2, 0.1) * mediumBloom * 0.3;  // Red reflection from walls
 
     col += glareColor;
 
@@ -172,14 +169,14 @@ const fragmentShader = `
     col += ambientRed * sideGlow * 0.4;
 
     // Subtle light scatter in the corridor
-    float scatter = pow(lookAtLight, 4.0) * 0.15;
+    float scatter = pow(lookAtLight, 4.0) * 0.08;
     col += vec3(1.0, 0.3, 0.2) * scatter;
 
     // Apply intro progress and brightness
     col *= iBrightness * iIntroProgress;
 
     // ACES tonemapping for smooth HDR glow
-    col = ACESFilm(col * 0.8);
+    col = ACESFilm(col);
 
     // Slight contrast boost
     col = pow(col, vec3(0.95));
