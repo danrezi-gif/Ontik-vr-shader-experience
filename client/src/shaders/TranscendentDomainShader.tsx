@@ -49,32 +49,6 @@ const fragmentShader = `
     return breathing + deepBreath;
   }
 
-  // Moiré interference pattern - INTENSE overlapping waves creating optical shimmer
-  float moirePattern(vec2 wallPos, float time) {
-    // Multiple wave sets at slightly different angles/frequencies - FASTER
-    float wave1 = sin(wallPos.x * 3.0 + wallPos.y * 0.8 + time * 1.2);
-    float wave2 = sin(wallPos.x * 3.15 - wallPos.y * 0.75 + time * 1.0);
-    float wave3 = sin(wallPos.x * 1.5 + wallPos.y * 3.0 - time * 0.9);
-    float wave4 = sin(wallPos.x * 1.58 - wallPos.y * 2.9 + time * 0.85);
-
-    // Interference from overlapping similar frequencies
-    float interference1 = wave1 * wave2;  // Creates beating pattern
-    float interference2 = wave3 * wave4;
-
-    // Additional diagonal waves for richer moiré - MORE LAYERS
-    float diag1 = sin((wallPos.x + wallPos.y) * 2.5 + time * 1.5);
-    float diag2 = sin((wallPos.x + wallPos.y) * 2.6 - time * 1.4);
-    float diagInterference = diag1 * diag2;
-
-    // Radial ripples for extra drama
-    float ripple = sin(length(wallPos) * 4.0 - time * 2.0);
-    float ripple2 = sin(length(wallPos) * 4.2 + time * 1.8);
-    float rippleInterference = ripple * ripple2;
-
-    // Combine all interference patterns - STRONGER
-    return (interference1 + interference2 + diagInterference + rippleInterference) * 0.4;
-  }
-
   // ACES tonemapping for smooth HDR glow
   vec3 ACESFilm(vec3 x) {
     float a = 2.51;
@@ -129,21 +103,13 @@ const fragmentShader = `
       // === BREATHING/MORPHING WALLS ===
       // Organic displacement makes walls bulge and breathe
       float breathing = breathingDisplacement(wallPos, iTime);
-      float wallDisplacement = clamp(breathing * 2.0, -1.5, 2.5);  // Clamped to prevent artifacts
+      float wallDisplacement = clamp(breathing * 2.0, -1.5, 2.5);
 
       // Apply breathing to wall distance (walls push in/out)
-      float wallDist = max(0.1, baseWallDist - wallDisplacement);  // Never go negative
+      float wallDist = max(0.1, baseWallDist - wallDisplacement);
 
-      // === MOIRÉ INTERFERENCE PATTERN ===
-      float moire = moirePattern(wallPos, iTime);
-
-      // Create seamless flowing pattern along the walls
+      // Simple flowing pattern along the walls
       float flowPattern = sin(wallZ * 0.15 + iTime * 0.5) * 0.5 + 0.5;
-      float flowPattern2 = sin(wallZ * 0.08 - iTime * 0.3) * 0.5 + 0.5;
-      float combinedFlow = mix(flowPattern, flowPattern2, 0.5);
-
-      // Combine flow with moiré for shimmering effect
-      combinedFlow = combinedFlow + moire * 0.4;
 
       // Close enough to wall plane? (seamless - always hit if near wall)
       float wallProximity = smoothstep(2.0, 0.0, wallDist);
@@ -183,26 +149,16 @@ const fragmentShader = `
         // Smooth interpolation between colors
         vec3 cycleColor = mix(color1, color2, smoothstep(0.0, 1.0, colorPhase));
 
-        // Additional spatial color variation - changes across wall surface
-        float spatialPhase = sin(wallPos.x * 0.5 + wallPos.y * 0.3 + iTime * 1.5) * 0.5 + 0.5;
-        vec3 spatialColor = mix(cycleColor, mix(magenta, amber, spatialPhase), 0.4);
-
-        // Base wall color with flow pattern
-        vec3 wallColor = mix(spatialColor, cycleColor, combinedFlow * 0.5);
-
-        // === MOIRÉ SHIMMER ON COLOR ===
-        // Add shimmering color variation from interference pattern
-        float moireShimmer = moire * 0.5 + 0.5;  // Normalize to 0-1
-        vec3 shimmerAccent = mix(electricPurple, hotOrange, moireShimmer);
-        wallColor = mix(wallColor, shimmerAccent, 0.35);
+        // Base wall color
+        vec3 wallColor = cycleColor;
 
         // === BREATHING INTENSITY ===
         // Walls glow brighter when they bulge toward you (never darken)
         float breathGlow = max(1.0, breathing * 0.4 + 1.2);
         wallColor *= breathGlow;
 
-        // Glow intensity based on flow pattern - MORE INTENSE
-        float glowPattern = pow(combinedFlow, 0.4) * 1.0 + 0.3;
+        // Glow intensity based on flow pattern
+        float glowPattern = pow(flowPattern, 0.5) * 0.8 + 0.4;
 
         // Faster pulsing
         float pulsePhase = h2 * 6.28 + iTime * (1.5 + currentSpeed * 0.4);
@@ -214,10 +170,8 @@ const fragmentShader = `
         // Combine glow
         float totalGlow = glowPattern * pulse + edgeGlow * 0.6;
 
-        // Apply glow to color - MUCH stronger emission
-        vec3 glowAccent = mix(hotOrange, magenta, sin(iTime * 2.0) * 0.5 + 0.5);
-        vec3 glowColor = mix(wallColor, glowAccent, totalGlow * 0.5);
-        glowColor *= (1.8 + totalGlow * 1.5);
+        // Apply glow to color
+        vec3 glowColor = wallColor * (1.5 + totalGlow * 1.0);
 
         // Distance falloff
         float distFade = 1.0 / (1.0 + t * 0.012);
