@@ -129,10 +129,10 @@ const fragmentShader = `
       // === BREATHING/MORPHING WALLS ===
       // Organic displacement makes walls bulge and breathe
       float breathing = breathingDisplacement(wallPos, iTime);
-      float wallDisplacement = breathing * 2.5;  // Noticeable but smooth bulges
+      float wallDisplacement = clamp(breathing * 2.0, -1.5, 2.5);  // Clamped to prevent artifacts
 
       // Apply breathing to wall distance (walls push in/out)
-      float wallDist = baseWallDist - wallDisplacement;
+      float wallDist = max(0.1, baseWallDist - wallDisplacement);  // Never go negative
 
       // === MOIRÉ INTERFERENCE PATTERN ===
       float moire = moirePattern(wallPos, iTime);
@@ -197,8 +197,8 @@ const fragmentShader = `
         wallColor = mix(wallColor, shimmerAccent, 0.35);
 
         // === BREATHING INTENSITY ===
-        // Walls glow MUCH brighter when they bulge toward you
-        float breathGlow = breathing * 0.5 + 1.0;
+        // Walls glow brighter when they bulge toward you (never darken)
+        float breathGlow = max(1.0, breathing * 0.4 + 1.2);
         wallColor *= breathGlow;
 
         // Glow intensity based on flow pattern - MORE INTENSE
