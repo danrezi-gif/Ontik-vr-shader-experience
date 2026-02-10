@@ -333,7 +333,7 @@ const SHADER_AUDIO: { [key: string]: string } = {
   'infinite-light': 'Ligeti-Lux-Aeterna.mp3',
   'sacred-vessels': 'John Tavener - Funeral Canticle (The Tree of Life) FULL VERSION.mp3',
   'ascension-testing': 'John Tavener - Funeral Canticle (The Tree of Life) FULL VERSION.mp3',
-  'transcendent-domain': 'The Transcendent Domain - Psychedelic Visuals Cosmic Consciousness - 4K.mp3',
+  'transcendent-domain': 'Pink Floyd - Shine On You Crazy Diamond [Official Music Video].mp3',
   // 'platonic-solids': audio TBD
   'default': 'background-music.mp3'
 };

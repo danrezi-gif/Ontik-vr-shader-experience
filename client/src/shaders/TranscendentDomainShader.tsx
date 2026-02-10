@@ -2,17 +2,160 @@ import { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
-// TRANSCENDENT DOMAIN - Immense pulsating wall pairs
-// Giant vertical light walls emerging from darkness, moving towards player
+// TRANSCENDENT DOMAIN - Infinite falling through a crimson void
+// Walls on left and right, blackness ahead, flowing downward, accelerating
 
-interface WallPair {
-  z: number;
-  speed: number;
-  hue: number;
-  pulseOffset: number;
-  width: number;
-  separation: number;
-}
+const vertexShader = `
+  varying vec2 vUv;
+  varying vec3 vPosition;
+  varying vec3 vWorldPosition;
+  varying float vAngle;
+
+  void main() {
+    vUv = uv;
+    vPosition = position;
+    vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
+
+    // Calculate angle around cylinder (0 = front, PI = back, PI/2 = sides)
+    vAngle = atan(position.x, position.z);
+
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const fragmentShader = `
+  uniform float iTime;
+  uniform float iSpeed;
+  uniform float iBrightness;
+  uniform float iColorShift;
+  uniform float iIntroProgress;
+  uniform float iAcceleration;
+  uniform float iElapsedTime;
+
+  varying vec2 vUv;
+  varying vec3 vPosition;
+  varying vec3 vWorldPosition;
+  varying float vAngle;
+
+  // Noise functions for organic flow
+  float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+  }
+
+  float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+
+    float a = hash(i);
+    float b = hash(i + vec2(1.0, 0.0));
+    float c = hash(i + vec2(0.0, 1.0));
+    float d = hash(i + vec2(1.0, 1.0));
+
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+  }
+
+  float fbm(vec2 p) {
+    float value = 0.0;
+    float amplitude = 0.5;
+    float frequency = 1.0;
+
+    for(int i = 0; i < 5; i++) {
+      value += amplitude * noise(p * frequency);
+      amplitude *= 0.5;
+      frequency *= 2.0;
+    }
+    return value;
+  }
+
+  void main() {
+    // Calculate how much we're looking at the sides vs front/back
+    // vAngle: 0 = front, +/-PI = back, +/-PI/2 = sides
+    float sideAmount = abs(sin(vAngle)); // 1 at sides, 0 at front/back
+    float frontBack = abs(cos(vAngle)); // 1 at front/back, 0 at sides
+
+    // Fade to black toward front and back
+    float wallVisibility = smoothstep(0.3, 0.7, sideAmount);
+
+    // Calculate speed with acceleration over time
+    float currentSpeed = iSpeed * (1.0 + iAcceleration * iElapsedTime * 0.1);
+    currentSpeed = min(currentSpeed, 5.0); // Cap at 5x
+
+    // Flowing downward motion
+    float flowTime = iTime * currentSpeed;
+    vec2 flowUv = vec2(vUv.x, vUv.y * 10.0 - flowTime);
+
+    // Create flowing patterns on walls
+    float flow1 = fbm(flowUv * 2.0);
+    float flow2 = fbm(flowUv * 4.0 + vec2(100.0, 0.0));
+    float flow3 = fbm(flowUv * 1.0 + vec2(0.0, 50.0));
+
+    // Vertical streaks (like rain or falling streams)
+    float streakX = fract(vUv.x * 20.0);
+    float streak = smoothstep(0.4, 0.5, streakX) * smoothstep(0.6, 0.5, streakX);
+    float streakFlow = fbm(vec2(vUv.x * 20.0, flowUv.y * 0.5));
+    streak *= streakFlow;
+
+    // Combine flows
+    float pattern = flow1 * 0.5 + flow2 * 0.3 + streak * 0.4;
+
+    // Color gradient: crimson red to light tones
+    // Base: deep crimson (#DC143C) = vec3(0.86, 0.08, 0.24)
+    // Light: warm white/pink = vec3(1.0, 0.9, 0.85)
+    vec3 deepCrimson = vec3(0.55, 0.0, 0.1);
+    vec3 brightCrimson = vec3(0.86, 0.08, 0.24);
+    vec3 lightTone = vec3(1.0, 0.85, 0.8);
+
+    // Evolve palette based on speed/time
+    float paletteEvolution = min(1.0, iElapsedTime * 0.02); // Slowly shifts lighter
+
+    vec3 baseColor = mix(deepCrimson, brightCrimson, paletteEvolution);
+    vec3 highlightColor = mix(brightCrimson, lightTone, paletteEvolution);
+
+    // Apply pattern to color
+    vec3 wallColor = mix(baseColor, highlightColor, pattern);
+
+    // Add glow intensity based on pattern peaks
+    float glow = pow(pattern, 2.0) * 0.5;
+    wallColor += highlightColor * glow;
+
+    // === CENTER PULSATING GLOW ===
+    // Only appears as speed increases
+    float speedFactor = smoothstep(0.0, 3.0, currentSpeed);
+
+    // Pulsation
+    float pulseFreq = 1.0 + currentSpeed * 0.5;
+    float pulse = 0.5 + 0.5 * sin(iTime * pulseFreq * 3.14159);
+    pulse = 0.6 + 0.4 * pulse; // Keep it mostly visible when active
+
+    // Glow is visible when looking toward front (blackness direction)
+    // but only after speed builds up
+    float glowIntensity = frontBack * speedFactor * pulse;
+
+    // Central glow color - warm light emerging from void
+    vec3 glowColor = mix(vec3(0.8, 0.2, 0.1), vec3(1.0, 0.6, 0.4), pulse);
+
+    // Radial falloff for center glow (stronger at very center)
+    float centerY = abs(vUv.y - 0.5) * 2.0;
+    float radialFalloff = 1.0 - smoothstep(0.0, 0.6, centerY);
+    glowIntensity *= radialFalloff;
+
+    // Combine wall color with void (front/back)
+    vec3 finalColor = wallColor * wallVisibility;
+
+    // Add center glow to the dark areas
+    finalColor += glowColor * glowIntensity * (1.0 - wallVisibility) * 0.8;
+
+    // Apply intro progress and brightness
+    finalColor *= iBrightness * iIntroProgress;
+
+    // Ensure black void when looking straight ahead (before speed builds)
+    float voidMask = (1.0 - wallVisibility) * (1.0 - glowIntensity);
+    finalColor = mix(finalColor, vec3(0.0), voidMask * (1.0 - speedFactor * 0.5));
+
+    gl_FragColor = vec4(finalColor, 1.0);
+  }
+`;
 
 interface TranscendentDomainShaderProps {
   speed?: number;
@@ -23,33 +166,6 @@ interface TranscendentDomainShaderProps {
   audioTime?: number;
 }
 
-// Single wall component with glow
-function GlowingWall({
-  position,
-  color,
-  intensity,
-  scale
-}: {
-  position: [number, number, number];
-  color: THREE.Color;
-  intensity: number;
-  scale: [number, number, number];
-}) {
-  const meshRef = useRef<THREE.Mesh>(null);
-
-  return (
-    <mesh ref={meshRef} position={position} scale={scale}>
-      <planeGeometry args={[1, 1]} />
-      <meshBasicMaterial
-        color={color}
-        transparent
-        opacity={intensity}
-        side={THREE.DoubleSide}
-      />
-    </mesh>
-  );
-}
-
 export function TranscendentDomainShader({
   speed = 1.0,
   brightness = 1.0,
@@ -58,150 +174,66 @@ export function TranscendentDomainShader({
   introProgress = 0,
   audioTime = 0
 }: TranscendentDomainShaderProps) {
-  const groupRef = useRef<THREE.Group>(null);
+  const meshRef = useRef<THREE.Mesh>(null);
+  const startTimeRef = useRef<number | null>(null);
 
-  // Create wall pairs - staggered at different depths
-  const wallPairs = useRef<WallPair[]>([
-    { z: -200, speed: 15, hue: 0.55, pulseOffset: 0, width: 80, separation: 60 },
-    { z: -350, speed: 18, hue: 0.6, pulseOffset: 1.5, width: 100, separation: 70 },
-    { z: -500, speed: 20, hue: 0.52, pulseOffset: 3.0, width: 120, separation: 80 },
-    { z: -650, speed: 16, hue: 0.58, pulseOffset: 4.5, width: 90, separation: 65 },
-    { z: -800, speed: 22, hue: 0.54, pulseOffset: 6.0, width: 110, separation: 75 },
-  ]);
-
-  // Wall mesh refs
-  const wallMeshesRef = useRef<(THREE.Mesh | null)[]>([]);
-
-  // Colors for each wall pair
-  const wallColors = useMemo(() => {
-    return wallPairs.current.map(pair => {
-      const color = new THREE.Color();
-      color.setHSL(pair.hue, 0.7, 0.6);
-      return color;
-    });
-  }, []);
+  const uniforms = useMemo(() => ({
+    iTime: { value: 0 },
+    iSpeed: { value: speed },
+    iBrightness: { value: brightness },
+    iColorShift: { value: colorShift },
+    iIntroProgress: { value: introProgress },
+    iAcceleration: { value: 0.15 }, // Rate of acceleration
+    iElapsedTime: { value: 0 }
+  }), []);
 
   useFrame((state) => {
-    if (!groupRef.current) return;
+    if (meshRef.current) {
+      const material = meshRef.current.material as THREE.ShaderMaterial;
+      material.uniforms.iTime.value = state.clock.elapsedTime;
+      material.uniforms.iSpeed.value = speed;
+      material.uniforms.iBrightness.value = brightness;
+      material.uniforms.iColorShift.value = colorShift;
+      material.uniforms.iIntroProgress.value = introProgress;
 
-    const time = state.clock.elapsedTime * speed;
-
-    // Update each wall pair
-    wallPairs.current.forEach((pair, index) => {
-      // Move towards player
-      pair.z += pair.speed * 0.016 * speed; // ~60fps delta
-
-      // Reset when passed player
-      if (pair.z > 50) {
-        pair.z = -800 - Math.random() * 200;
-        pair.hue = 0.5 + Math.random() * 0.15; // Blue-cyan range
-        pair.speed = 15 + Math.random() * 10;
-        pair.width = 80 + Math.random() * 50;
-        pair.separation = 55 + Math.random() * 30;
-        wallColors[index].setHSL(pair.hue, 0.7, 0.6);
+      // Track elapsed time since intro started
+      if (introProgress > 0 && startTimeRef.current === null) {
+        startTimeRef.current = state.clock.elapsedTime;
       }
-
-      // Calculate intensity based on distance (fade in from far, fade out when close)
-      const distanceFade = Math.min(1, Math.max(0, (-pair.z - 50) / 200)); // Fade in
-      const closeFade = Math.min(1, Math.max(0, (-pair.z + 50) / 100)); // Fade out when close
-
-      // Pulsing effect
-      const pulse = 0.6 + 0.4 * Math.sin(time * 2.0 + pair.pulseOffset);
-
-      const intensity = distanceFade * closeFade * pulse * brightness * introProgress;
-
-      // Update wall meshes
-      const leftWallIndex = index * 2;
-      const rightWallIndex = index * 2 + 1;
-
-      if (wallMeshesRef.current[leftWallIndex]) {
-        const leftWall = wallMeshesRef.current[leftWallIndex]!;
-        leftWall.position.set(-pair.separation, 0, pair.z);
-        leftWall.scale.set(pair.width * 0.3, 200, 1);
-        (leftWall.material as THREE.MeshBasicMaterial).opacity = intensity;
-        (leftWall.material as THREE.MeshBasicMaterial).color = wallColors[index];
+      if (startTimeRef.current !== null) {
+        material.uniforms.iElapsedTime.value = state.clock.elapsedTime - startTimeRef.current;
       }
-
-      if (wallMeshesRef.current[rightWallIndex]) {
-        const rightWall = wallMeshesRef.current[rightWallIndex]!;
-        rightWall.position.set(pair.separation, 0, pair.z);
-        rightWall.scale.set(pair.width * 0.3, 200, 1);
-        (rightWall.material as THREE.MeshBasicMaterial).opacity = intensity;
-        (rightWall.material as THREE.MeshBasicMaterial).color = wallColors[index];
-      }
-    });
+    }
   });
 
+  // Cylinder extending forward and backward from user
+  // User is inside the cylinder, looking at the walls on the sides
   return (
-    <group ref={groupRef} rotation={[0, -headRotationY, 0]}>
-      {/* Black background sphere */}
-      <mesh scale={[-1, 1, 1]}>
-        <sphereGeometry args={[500, 32, 32]} />
-        <meshBasicMaterial color="black" side={THREE.BackSide} />
+    <group rotation={[0, -headRotationY, 0]}>
+      {/* Main cylinder - walls on sides */}
+      <mesh
+        ref={meshRef}
+        rotation={[Math.PI / 2, 0, 0]}
+        position={[0, 0, 0]}
+      >
+        <cylinderGeometry args={[30, 30, 1000, 64, 64, true]} />
+        <shaderMaterial
+          vertexShader={vertexShader}
+          fragmentShader={fragmentShader}
+          uniforms={uniforms}
+          side={THREE.BackSide}
+        />
       </mesh>
 
-      {/* Wall pairs */}
-      {wallPairs.current.map((pair, index) => (
-        <group key={index}>
-          {/* Left wall */}
-          <mesh
-            ref={(el) => { wallMeshesRef.current[index * 2] = el; }}
-            position={[-pair.separation, 0, pair.z]}
-            scale={[pair.width * 0.3, 200, 1]}
-          >
-            <planeGeometry args={[1, 1]} />
-            <meshBasicMaterial
-              color={wallColors[index]}
-              transparent
-              opacity={0}
-              side={THREE.DoubleSide}
-            />
-          </mesh>
-
-          {/* Right wall */}
-          <mesh
-            ref={(el) => { wallMeshesRef.current[index * 2 + 1] = el; }}
-            position={[pair.separation, 0, pair.z]}
-            scale={[pair.width * 0.3, 200, 1]}
-          >
-            <planeGeometry args={[1, 1]} />
-            <meshBasicMaterial
-              color={wallColors[index]}
-              transparent
-              opacity={0}
-              side={THREE.DoubleSide}
-            />
-          </mesh>
-
-          {/* Glow layers for left wall */}
-          <mesh
-            position={[-pair.separation, 0, pair.z + 0.5]}
-            scale={[pair.width * 0.5, 220, 1]}
-          >
-            <planeGeometry args={[1, 1]} />
-            <meshBasicMaterial
-              color={wallColors[index]}
-              transparent
-              opacity={0.15}
-              side={THREE.DoubleSide}
-            />
-          </mesh>
-
-          {/* Glow layers for right wall */}
-          <mesh
-            position={[pair.separation, 0, pair.z + 0.5]}
-            scale={[pair.width * 0.5, 220, 1]}
-          >
-            <planeGeometry args={[1, 1]} />
-            <meshBasicMaterial
-              color={wallColors[index]}
-              transparent
-              opacity={0.15}
-              side={THREE.DoubleSide}
-            />
-          </mesh>
-        </group>
-      ))}
+      {/* Black caps at top and bottom for infinite depth illusion */}
+      <mesh position={[0, 0, -500]} rotation={[0, 0, 0]}>
+        <circleGeometry args={[30, 64]} />
+        <meshBasicMaterial color="black" side={THREE.DoubleSide} />
+      </mesh>
+      <mesh position={[0, 0, 500]} rotation={[0, 0, 0]}>
+        <circleGeometry args={[30, 64]} />
+        <meshBasicMaterial color="black" side={THREE.DoubleSide} />
+      </mesh>
     </group>
   );
 }
