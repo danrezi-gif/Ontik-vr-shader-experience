@@ -28,56 +28,27 @@ const fragmentShader = `
   varying vec3 vWorldPosition;
   varying vec2 vUv;
 
-  // Hash function for randomness
-  float hash(vec2 p) {
-    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-  }
-
   // Breathing/Morphing wall displacement - organic bulging
   float breathingDisplacement(vec2 wallPos, float time) {
     // Multiple organic frequencies create breathing effect
-    float breath1 = sin(wallPos.x * 0.3 + time * 0.7) * sin(wallPos.y * 0.2 + time * 0.5);
-    float breath2 = sin(wallPos.x * 0.15 - time * 0.4) * sin(wallPos.y * 0.25 + time * 0.6);
-    float breath3 = sin(wallPos.x * 0.5 + wallPos.y * 0.3 + time * 0.8);
+    float breath1 = sin(wallPos.x * 0.4 + time * 1.2) * sin(wallPos.y * 0.3 + time * 0.9);
+    float breath2 = sin(wallPos.x * 0.2 - time * 0.7) * sin(wallPos.y * 0.25 + time * 1.0);
+    float breath3 = sin(wallPos.x * 0.6 + wallPos.y * 0.4 + time * 1.3);
 
     // Combine for organic, living wall movement
-    float breathing = breath1 * 0.5 + breath2 * 0.3 + breath3 * 0.2;
+    float breathing = breath1 * 0.5 + breath2 * 0.35 + breath3 * 0.25;
 
-    // Add slow, deep "inhale/exhale" rhythm
-    float deepBreath = sin(time * 0.3) * 0.3;
+    // Deep "inhale/exhale" rhythm
+    float deepBreath = sin(time * 0.5) * 0.4;
 
     return breathing + deepBreath;
   }
 
-  // Moiré interference pattern - overlapping waves creating optical shimmer
-  float moirePattern(vec2 wallPos, float time) {
-    // Multiple wave sets at slightly different angles/frequencies
-    float wave1 = sin(wallPos.x * 2.0 + wallPos.y * 0.5 + time * 0.4);
-    float wave2 = sin(wallPos.x * 2.1 - wallPos.y * 0.48 + time * 0.35);
-    float wave3 = sin(wallPos.x * 1.0 + wallPos.y * 2.0 - time * 0.3);
-    float wave4 = sin(wallPos.x * 1.05 - wallPos.y * 1.95 + time * 0.25);
-
-    // Interference from overlapping similar frequencies
-    float interference1 = wave1 * wave2;  // Creates beating pattern
-    float interference2 = wave3 * wave4;
-
-    // Additional diagonal waves for richer moiré
-    float diag1 = sin((wallPos.x + wallPos.y) * 1.5 + time * 0.5);
-    float diag2 = sin((wallPos.x + wallPos.y) * 1.55 - time * 0.45);
-    float diagInterference = diag1 * diag2;
-
-    // Combine all interference patterns
-    return (interference1 + interference2 + diagInterference) * 0.33;
-  }
-
-  // ACES tonemapping for smooth HDR glow
-  vec3 ACESFilm(vec3 x) {
-    float a = 2.51;
-    float b = 0.03;
-    float c = 2.43;
-    float d = 0.59;
-    float e = 0.14;
-    return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
+  // Tanh approximation for GLSL ES compatibility
+  // https://mini.gmshaders.com/p/func-tanh
+  vec3 tanhApprox(vec3 x) {
+    vec3 x2 = x * x;
+    return clamp(x * (27.0 + x2) / (27.0 + 9.0 * x2), -1.0, 1.0);
   }
 
   void main() {
@@ -114,7 +85,6 @@ const fragmentShader = `
 
       // Which wall are we closer to?
       float baseWallDist = min(leftWallDist, rightWallDist);
-      float isLeftWall = step(leftWallDist, rightWallDist);
 
       // Seamless walls - continuous surface with flowing texture
       float wallZ = p.z;
@@ -124,21 +94,13 @@ const fragmentShader = `
       // === BREATHING/MORPHING WALLS ===
       // Organic displacement makes walls bulge and breathe
       float breathing = breathingDisplacement(wallPos, iTime);
-      float wallDisplacement = breathing * 1.5;  // Amplitude of the bulge
+      float wallDisplacement = clamp(breathing * 2.0, -1.5, 2.5);
 
       // Apply breathing to wall distance (walls push in/out)
-      float wallDist = baseWallDist - wallDisplacement;
+      float wallDist = max(0.1, baseWallDist - wallDisplacement);
 
-      // === MOIRÉ INTERFERENCE PATTERN ===
-      float moire = moirePattern(wallPos, iTime);
-
-      // Create seamless flowing pattern along the walls
+      // Simple flowing pattern along the walls
       float flowPattern = sin(wallZ * 0.15 + iTime * 0.5) * 0.5 + 0.5;
-      float flowPattern2 = sin(wallZ * 0.08 - iTime * 0.3) * 0.5 + 0.5;
-      float combinedFlow = mix(flowPattern, flowPattern2, 0.5);
-
-      // Combine flow with moiré for shimmering effect
-      combinedFlow = combinedFlow + moire * 0.4;
 
       // Close enough to wall plane? (seamless - always hit if near wall)
       float wallProximity = smoothstep(2.0, 0.0, wallDist);
@@ -147,50 +109,54 @@ const fragmentShader = `
       float wallHit = wallProximity;
 
       if (wallHit > 0.01) {
-        // Use position for subtle variation
-        vec2 cellId = vec2(isLeftWall, floor(wallZ * 0.1));
-        float h = hash(cellId);
-        float h2 = hash(cellId + vec2(100.0, 0.0));
+        // === SMOOTH GRADIENT COLOR SYSTEM ===
+        // Position-based color that creates natural, flowing gradients
+        // Using sin with phase offsets ensures smooth color mixing (never solid colors)
+        float colorPos = wallY * 0.15 + wallZ * 0.08 + iTime * 0.3;
 
-        // Strong crimson/red color palette
-        vec3 deepRed = vec3(0.7, 0.0, 0.05);
-        vec3 brightRed = vec3(1.0, 0.1, 0.08);
-        vec3 hotRed = vec3(1.0, 0.3, 0.1);
+        // Phase-shifted sin waves for RGB - this guarantees smooth gradients
+        // The offsets (0, 1.0, 2.0) spread the colors across the spectrum
+        vec3 gradientColor = sin(colorPos + vec3(0.0, 1.0, 2.0)) * 0.5 + 0.5;
 
-        // Palette evolution over time
-        float paletteEvolution = min(1.0, iElapsedTime * 0.015);
+        // Shift toward warm palette (reds, oranges, magentas, purples)
+        // Remap to desired color range while keeping smooth gradients
+        vec3 warmShift = vec3(
+          gradientColor.r * 0.6 + 0.4,                           // Red: 0.4-1.0
+          gradientColor.g * gradientColor.r * 0.5,               // Green: modulated by red for oranges
+          gradientColor.b * 0.7 + gradientColor.r * 0.3          // Blue: for magentas/purples
+        );
 
-        // Base wall color with smooth variation
-        vec3 wallColor = mix(deepRed, brightRed, combinedFlow * 0.6 + 0.2);
-        wallColor = mix(wallColor, hotRed, paletteEvolution * 0.5);
+        // Add secondary wave for more complex gradient patterns
+        float colorPos2 = wallY * 0.22 - wallZ * 0.12 + iTime * 0.2;
+        vec3 secondaryGradient = sin(colorPos2 + vec3(0.5, 1.5, 2.5)) * 0.5 + 0.5;
 
-        // === MOIRÉ SHIMMER ON COLOR ===
-        // Add shimmering color variation from interference pattern
-        float moireShimmer = moire * 0.5 + 0.5;  // Normalize to 0-1
-        vec3 shimmerColor = mix(deepRed, vec3(1.0, 0.4, 0.2), moireShimmer * 0.3);
-        wallColor = mix(wallColor, shimmerColor, 0.4);
+        // Blend the two gradient systems for rich, organic color flow
+        vec3 wallColor = mix(warmShift, secondaryGradient * vec3(1.0, 0.3, 0.6), 0.35);
+
+        // Ensure we stay in warm spectrum - boost reds, limit greens
+        wallColor.r = max(wallColor.r, 0.3);
+        wallColor.g = min(wallColor.g, wallColor.r * 0.7);
 
         // === BREATHING INTENSITY ===
-        // Walls glow brighter when they bulge toward you
-        float breathGlow = breathing * 0.3 + 1.0;
+        // Walls glow brighter when they bulge toward you (never darken)
+        float breathGlow = max(1.0, breathing * 0.4 + 1.2);
         wallColor *= breathGlow;
 
         // Glow intensity based on flow pattern
-        float glowPattern = pow(combinedFlow, 0.5) * 0.8 + 0.2;
+        float glowPattern = pow(flowPattern, 0.5) * 0.8 + 0.4;
 
-        // Subtle pulsing
-        float pulsePhase = h2 * 6.28 + iTime * (0.8 + currentSpeed * 0.2);
-        float pulse = 0.85 + 0.15 * sin(pulsePhase);
+        // Smooth, position-based pulsing (no abrupt changes)
+        float pulsePhase = wallY * 0.3 + wallZ * 0.15 + iTime * 0.8;
+        float pulse = 0.75 + 0.25 * sin(pulsePhase);
 
         // Edge glow (brighter near wall edge)
-        float edgeGlow = smoothstep(0.5, 0.0, wallDist) * 1.5;
+        float edgeGlow = smoothstep(1.0, 0.0, wallDist) * 1.5;
 
-        // Combine glow
-        float totalGlow = glowPattern * pulse + edgeGlow * 0.4;
+        // Combine glow smoothly
+        float totalGlow = glowPattern * pulse + edgeGlow * 0.5;
 
-        // Apply glow to color - stronger emission
-        vec3 glowColor = mix(wallColor, hotRed, totalGlow * 0.4);
-        glowColor *= (1.5 + totalGlow * 1.2);
+        // Apply glow to color
+        vec3 glowColor = wallColor * (1.5 + totalGlow * 1.0);
 
         // Distance falloff
         float distFade = 1.0 / (1.0 + t * 0.012);
@@ -227,23 +193,29 @@ const fragmentShader = `
 
     col += glareColor;
 
-    // Add atmospheric glow toward the walls
+    // Add atmospheric glow toward the walls - smooth gradient colors
     float sideGlow = smoothstep(0.2, 0.9, abs(rd.x));
-    vec3 ambientRed = vec3(0.4, 0.02, 0.03);
-    col += ambientRed * sideGlow * 0.4;
+    // Smooth ambient gradient based on view direction and time
+    float ambientPhase = rd.y * 2.0 + iTime * 0.25;
+    vec3 ambientGradient = sin(ambientPhase + vec3(0.0, 1.2, 2.4)) * 0.5 + 0.5;
+    vec3 ambientColor = ambientGradient * vec3(0.5, 0.15, 0.4); // Warm tint
+    col += ambientColor * sideGlow * 0.5;
 
-    // Subtle light scatter in the corridor
-    float scatter = pow(lookAtLight, 4.0) * 0.08;
-    col += vec3(1.0, 0.3, 0.2) * scatter;
+    // Light scatter in the corridor - smooth gradient shifts
+    float scatter = pow(lookAtLight, 4.0) * 0.12;
+    float scatterPhase = iTime * 0.2 + rd.x * 1.5;
+    vec3 scatterGradient = sin(scatterPhase + vec3(0.0, 0.8, 1.6)) * 0.5 + 0.5;
+    vec3 scatterColor = scatterGradient * vec3(1.0, 0.4, 0.7);
+    col += scatterColor * scatter;
 
     // Apply intro progress and brightness
     col *= iBrightness * iIntroProgress;
 
-    // ACES tonemapping for smooth HDR glow
-    col = ACESFilm(col);
+    // Tanh tonemapping for smooth HDR (from reference shader)
+    col = tanhApprox(col * col * 0.5);
 
-    // Slight contrast boost
-    col = pow(col, vec3(0.95));
+    // Slight warmth boost
+    col.r = pow(col.r, 0.92);
 
     gl_FragColor = vec4(col, 1.0);
   }
