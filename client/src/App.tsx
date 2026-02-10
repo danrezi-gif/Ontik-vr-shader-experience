@@ -359,7 +359,16 @@ const globalAudio = {
 const POSITIONAL_AUDIO_SHADERS = ['tunnel-lights', 'sacred-vessels', 'infinite-light', 'transcendent-domain'];
 
 function getAudioBufferForShader(shaderId: string): AudioBuffer | null {
-  return audioBuffers[shaderId] || audioBuffers['default'] || null;
+  // Only return the specific shader's buffer - don't fall back to default
+  // This ensures we wait for the correct track instead of playing background music
+  if (audioBuffers[shaderId]) {
+    return audioBuffers[shaderId];
+  }
+  // Only use default if explicitly requested or shader has no assigned track
+  if (shaderId === 'default' || !SHADER_AUDIO[shaderId]) {
+    return audioBuffers['default'] || null;
+  }
+  return null;
 }
 
 // Create impulse response for reverb (cathedral-like)
@@ -538,20 +547,32 @@ function BackgroundMusic({ shouldPlay, shaderId, headRotationY = 0 }: Background
     initAudioListener(camera);
 
     // Try to play the track
-    const tryPlay = () => {
+    const tryPlay = (useFallback = false) => {
       const buffer = getAudioBufferForShader(shaderId);
       if (buffer) {
         playTrackForShader(shaderId);
         return true;
       }
+      // If fallback requested and specific buffer failed, use default
+      if (useFallback && audioBuffers['default']) {
+        console.warn(`Audio for ${shaderId} not available, falling back to default`);
+        playTrackForShader('default');
+        return true;
+      }
       return false;
     };
 
-    // If buffer not ready, poll until it is
+    // If buffer not ready, poll until it is (with timeout for fallback)
     if (!tryPlay()) {
+      const startTime = Date.now();
+      const maxWaitMs = 10000; // Wait up to 10 seconds before falling back
       const checkInterval = setInterval(() => {
         if (tryPlay()) {
           clearInterval(checkInterval);
+        } else if (Date.now() - startTime > maxWaitMs) {
+          // Timeout reached, try fallback
+          clearInterval(checkInterval);
+          tryPlay(true);
         }
       }, 100);
       return () => clearInterval(checkInterval);
