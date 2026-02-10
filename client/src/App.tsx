@@ -6,8 +6,6 @@ import { AbstractWavesShader } from "./shaders/AbstractWavesShader";
 import { TunnelLightsShader } from "./shaders/TunnelLightsShader";
 import { InfiniteLightShader } from "./shaders/InfiniteLightShader";
 import { SacredVesselsShader } from "./shaders/SacredVesselsShader";
-import { PlatonicSolidsShader } from "./shaders/PlatonicSolidsShader";
-import { AscensionTestingShader } from "./shaders/AscensionTestingShader";
 import { TranscendentDomainShader } from "./shaders/TranscendentDomainShader";
 import { SHADERS } from "./shaders";
 import "@fontsource/inter";
@@ -38,10 +36,6 @@ function ShaderRenderer({ shaderId, speed, pulse, brightness, colorShift, zoom, 
       return <InfiniteLightShader speed={speed} brightness={brightness} colorShift={colorShift} zoom={zoom} pulse={pulse} headRotationY={headRotationY} introProgress={introProgress} />;
     case 'sacred-vessels':
       return <SacredVesselsShader speed={speed} brightness={brightness} colorShift={colorShift} headRotationY={headRotationY} introProgress={introProgress} audioTime={audioTime} />;
-    case 'platonic-solids':
-      return <PlatonicSolidsShader introProgress={introProgress} />;
-    case 'ascension-testing':
-      return <AscensionTestingShader speed={speed} brightness={brightness} colorShift={colorShift} headRotationY={headRotationY} introProgress={introProgress} audioTime={audioTime} />;
     case 'transcendent-domain':
       return <TranscendentDomainShader speed={speed} brightness={brightness} colorShift={colorShift} headRotationY={headRotationY} introProgress={introProgress} audioTime={audioTime} />;
     default:
@@ -332,9 +326,7 @@ const SHADER_AUDIO: { [key: string]: string } = {
   'tunnel-lights': 'Russian chant - Покаяния отверзи ми двери.mp3',
   'infinite-light': 'Ligeti-Lux-Aeterna.mp3',
   'sacred-vessels': 'John Tavener - Funeral Canticle (The Tree of Life) FULL VERSION.mp3',
-  'ascension-testing': 'John Tavener - Funeral Canticle (The Tree of Life) FULL VERSION.mp3',
   'transcendent-domain': 'Pink Floyd - Shine On You Crazy Diamond [Official Music Video].mp3',
-  // 'platonic-solids': audio TBD
   'default': 'background-music.mp3'
 };
 
@@ -364,7 +356,7 @@ const globalAudio = {
 };
 
 // Shaders that use positional audio from a specific location
-const POSITIONAL_AUDIO_SHADERS = ['tunnel-lights', 'sacred-vessels', 'infinite-light', 'platonic-solids', 'ascension-testing', 'transcendent-domain'];
+const POSITIONAL_AUDIO_SHADERS = ['tunnel-lights', 'sacred-vessels', 'infinite-light', 'transcendent-domain'];
 
 function getAudioBufferForShader(shaderId: string): AudioBuffer | null {
   return audioBuffers[shaderId] || audioBuffers['default'] || null;
@@ -586,15 +578,12 @@ function BackgroundMusic({ shouldPlay, shaderId, headRotationY = 0 }: Background
       const x = Math.sin(-headRotationY) * distance;
       const z = -Math.cos(-headRotationY) * distance;
       audioPosition = [x, 0, z];
-    } else if (shaderId === 'sacred-vessels' || shaderId === 'ascension-testing') {
+    } else if (shaderId === 'sacred-vessels') {
       // From above - divine light descending
       audioPosition = [0, 50, 0];
     } else if (shaderId === 'infinite-light') {
       // Close and centered for immersive surrounding effect
       audioPosition = [0, 0, -10];
-    } else if (shaderId === 'platonic-solids') {
-      // Centered, in front - where the solids appear
-      audioPosition = [0, 0, -6];
     } else if (shaderId === 'transcendent-domain') {
       // Surrounding immersive - slightly ahead and centered
       audioPosition = [0, 0, -20];
@@ -695,7 +684,7 @@ function VRIntroAnimator({ started, onProgress, onComplete, shaderId }: VRIntroA
 
     // Shader-specific intro durations
     let duration = 8000;
-    if (shaderId === 'infinite-light' || shaderId === 'platonic-solids') {
+    if (shaderId === 'infinite-light') {
       duration = 35000;
     } else if (shaderId === 'transcendent-domain') {
       duration = 12000; // 12 second contemplative fade-in
@@ -792,7 +781,7 @@ function App() {
   }, []);
 
   // Calculate effective brightness (intro affects it for abstract-waves and tunnel-lights)
-  const hasIntro = selectedShader === 'abstract-waves' || selectedShader === 'tunnel-lights' || selectedShader === 'infinite-light' || selectedShader === 'sacred-vessels' || selectedShader === 'platonic-solids' || selectedShader === 'ascension-testing' || selectedShader === 'transcendent-domain';
+  const hasIntro = selectedShader === 'abstract-waves' || selectedShader === 'tunnel-lights' || selectedShader === 'infinite-light' || selectedShader === 'sacred-vessels' || selectedShader === 'transcendent-domain';
   const isInIntro = vrIntroStarted && hasIntro && !introComplete;
   const introBrightness = 0.1 + 0.9 * introProgress; // 0.1 → 1.0
   const brightness = isInIntro ? introBrightness * baseBrightness : baseBrightness;

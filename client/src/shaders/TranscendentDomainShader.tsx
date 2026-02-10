@@ -56,14 +56,14 @@ const fragmentShader = `
 
     // Wall parameters
     float wallDistance = 8.0;     // How far left/right the walls are
-    float maxDist = 200.0;        // How far to raymarch
+    float maxDist = 600.0;        // How far to raymarch - extended for deep infinity
 
 
     // Raymarch through the scene - optimized for VR performance
     float t = 0.5;
     float totalWallContrib = 0.0;
 
-    for(int i = 0; i < 45; i++) {
+    for(int i = 0; i < 70; i++) {
       vec3 p = rd * t;
 
       // Apply forward motion (walls move backward as we move forward)
@@ -132,8 +132,8 @@ const fragmentShader = `
         // Apply glow to color
         vec3 glowColor = wallColor * (1.2 + totalGlow * 0.6);
 
-        // Distance falloff
-        float distFade = 1.0 / (1.0 + t * 0.015);
+        // Distance falloff - gentler for deeper infinity
+        float distFade = 1.0 / (1.0 + t * 0.005);
 
         // Accumulate color
         col += glowColor * wallHit * distFade * 0.4;
@@ -233,7 +233,7 @@ export function TranscendentDomainShader({
       scale={[-1, 1, 1]}
       rotation={[0, -headRotationY, 0]}
     >
-      <sphereGeometry args={[50, 64, 64]} />
+      <sphereGeometry args={[100, 64, 64]} />
       <shaderMaterial
         vertexShader={vertexShader}
         fragmentShader={fragmentShader}
