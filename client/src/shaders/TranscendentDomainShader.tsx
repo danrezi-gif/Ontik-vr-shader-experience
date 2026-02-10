@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
 // TRANSCENDENT DOMAIN - Moving forward through an infinite crimson corridor
-// Seamless glowing red walls on left and right, glaring light ahead
+// Seamless glowing red walls on left and right with breathing organic motion
 
 const vertexShader = `
   varying vec3 vWorldPosition;
@@ -52,14 +52,12 @@ const fragmentShader = `
     currentSpeed = min(currentSpeed, 5.0);
 
     // Forward motion along Z axis (moving forward through corridor)
-    float forwardMotion = iTime * currentSpeed * 3.0;
+    float forwardMotion = iTime * currentSpeed * 6.0;
 
     // Wall parameters
     float wallDistance = 8.0;     // How far left/right the walls are
     float maxDist = 200.0;        // How far to raymarch
 
-    // Point light at the end of the corridor
-    vec3 lightColor = vec3(1.0, 0.95, 0.9);  // Warm white glare
 
     // Raymarch through the scene - optimized for VR performance
     float t = 0.5;
@@ -91,8 +89,8 @@ const fragmentShader = `
       // Apply breathing to wall distance with safe minimum
       float wallDist = max(0.5, baseWallDist - wallDisplacement);
 
-      // Simple flowing pattern along the walls
-      float flowPattern = sin(wallZ * 0.15 + iTime * 0.5) * 0.5 + 0.5;
+      // Simple flowing pattern along the walls - stronger z-response for visible motion
+      float flowPattern = sin(wallZ * 0.25 + iTime * 0.5) * 0.5 + 0.5;
 
       // Close enough to wall plane? (smooth falloff)
       float wallProximity = smoothstep(3.0, 0.5, wallDist);
@@ -103,7 +101,8 @@ const fragmentShader = `
       if (wallHit > 0.01) {
         // === CLEAN GRADIENT COLOR SYSTEM ===
         // Simple flowing gradients - warm reds to magentas
-        float colorPos = wallY * 0.12 + wallZ * 0.06 + iTime * 0.25;
+        // Stronger z-influence makes forward motion more visible
+        float colorPos = wallY * 0.12 + wallZ * 0.15 + iTime * 0.25;
 
         // Base gradient in warm spectrum
         float r = 0.6 + 0.4 * sin(colorPos);
@@ -146,27 +145,8 @@ const fragmentShader = `
       if (t > maxDist) break;
     }
 
-    // Add the glaring point light at the end
-    // Calculate angle to light direction (forward = +Z in view space)
+    // Forward glow - subtle ambient light ahead (no harsh glare)
     float lookAtLight = max(0.0, rd.z);  // How much we're looking forward
-
-    // Core glare - tight, intense center
-    float coreGlare = pow(lookAtLight, 64.0) * 1.5;
-
-    // Medium bloom
-    float mediumBloom = pow(lookAtLight, 16.0) * 0.8;
-
-    // Wide atmospheric bloom
-    float wideBloom = pow(lookAtLight, 4.0) * 0.2;
-
-    // Combine light contributions
-    float totalLight = coreGlare + mediumBloom + wideBloom;
-
-    // Light color - warm white with slight red tint from walls
-    vec3 glareColor = lightColor * totalLight;
-    glareColor += vec3(1.0, 0.2, 0.1) * mediumBloom * 0.3;  // Red reflection from walls
-
-    col += glareColor;
 
     // Add atmospheric glow toward the walls - smooth gradient colors
     float sideGlow = smoothstep(0.2, 0.9, abs(rd.x));
