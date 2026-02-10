@@ -40,7 +40,7 @@ Situated at the intersection of consciousness research, contemplative technology
 
 ```bash
 # Clone the repository
-git clone https://github.com/danrezi-gif/vr-shader-experience.git
+git clone https://github.com/danrezi-gif/Ontik-vr-shader-experience.git
 cd vr-shader-experience
 
 # Serve with any static file server
@@ -93,7 +93,7 @@ If you reference this work in academic or research contexts:
 ```
 Rezinovsky, D. (2025). VR Shader Experience: Experimental WebXR 
 environments for consciousness phenomenology. 
-GitHub. https://github.com/danrezi-gif/vr-shader-experience
+GitHub. https://github.com/danrezi-gif/Ontik-vr-shader-experience
 ```
 
 ## Acknowledgments
