@@ -25,9 +25,10 @@ interface ShaderRendererProps {
   headRotationY: number;
   introProgress: number;
   audioTime: number;
+  envelopmentRef?: React.MutableRefObject<number>;
 }
 
-function ShaderRenderer({ shaderId, speed, pulse, brightness, colorShift, zoom, headRotationY, introProgress, audioTime }: ShaderRendererProps) {
+function ShaderRenderer({ shaderId, speed, pulse, brightness, colorShift, zoom, headRotationY, introProgress, audioTime, envelopmentRef }: ShaderRendererProps) {
   switch (shaderId) {
     case 'abstract-waves':
       return <AbstractWavesShader speed={speed} brightness={brightness} colorShift={colorShift} zoom={zoom} pulse={pulse} headRotationY={headRotationY} introProgress={introProgress} />;
@@ -40,7 +41,7 @@ function ShaderRenderer({ shaderId, speed, pulse, brightness, colorShift, zoom, 
     case 'transcendent-domain':
       return <TranscendentDomainShader speed={speed} brightness={brightness} colorShift={colorShift} headRotationY={headRotationY} introProgress={introProgress} audioTime={audioTime} />;
     case 'oceanic-dissolution':
-      return <OceanicDissolutionShader speed={speed} brightness={brightness} colorShift={colorShift} headRotationY={headRotationY} introProgress={introProgress} audioTime={audioTime} />;
+      return <OceanicDissolutionShader speed={speed} brightness={brightness} colorShift={colorShift} headRotationY={headRotationY} introProgress={introProgress} audioTime={audioTime} envelopmentRef={envelopmentRef} />;
     default:
       return <AbstractWavesShader speed={speed} brightness={brightness} colorShift={colorShift} zoom={zoom} pulse={pulse} headRotationY={headRotationY} introProgress={introProgress} />;
   }
@@ -236,13 +237,28 @@ function VRControllerHandler({ onBack, onSpeedChange, onBrightnessChange, onColo
 }
 
 // Glowing orbs at hand/controller positions
-function HandGlows() {
+// When in Alien Womb shader: energy wisps with plasma noise + trailing orbs
+function HandGlows({ shaderId, envelopmentRef }: { shaderId?: string; envelopmentRef?: React.MutableRefObject<number> }) {
+  const isAlienWomb = shaderId === 'oceanic-dissolution';
+
   const leftHandRef = useRef<THREE.Mesh>(null);
   const rightHandRef = useRef<THREE.Mesh>(null);
   const leftGlowRef = useRef<THREE.PointLight>(null);
   const rightGlowRef = useRef<THREE.PointLight>(null);
 
-  // Shader for glowing orb effect
+  // Trail refs for energy wisps (Alien Womb only)
+  const leftTrail1Ref = useRef<THREE.Mesh>(null);
+  const leftTrail2Ref = useRef<THREE.Mesh>(null);
+  const rightTrail1Ref = useRef<THREE.Mesh>(null);
+  const rightTrail2Ref = useRef<THREE.Mesh>(null);
+  const leftTrailPos1 = useRef(new THREE.Vector3());
+  const leftTrailPos2 = useRef(new THREE.Vector3());
+  const rightTrailPos1 = useRef(new THREE.Vector3());
+  const rightTrailPos2 = useRef(new THREE.Vector3());
+  // Cached Vector3 for trail lerp target — avoids per-frame GC on Quest
+  const trailTargetCache = useRef(new THREE.Vector3());
+
+  // Standard glowing orb shader (other shaders)
   const glowMaterial = useMemo(() => {
     return new THREE.ShaderMaterial({
       uniforms: {
@@ -273,6 +289,105 @@ function HandGlows() {
     });
   }, []);
 
+  // Energy wisp plasma shader (Alien Womb)
+  const wispMaterial = useMemo(() => {
+    return new THREE.ShaderMaterial({
+      uniforms: {
+        time: { value: 0 },
+        color1: { value: new THREE.Color(0.35, 0.80, 0.90) },
+        color2: { value: new THREE.Color(0.85, 0.45, 0.55) },
+        fusion: { value: 0 }
+      },
+      vertexShader: `
+        varying vec3 vNormal;
+        varying vec3 vPosition;
+        void main() {
+          vNormal = normalize(normalMatrix * normal);
+          vPosition = position;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float time;
+        uniform vec3 color1;
+        uniform vec3 color2;
+        uniform float fusion;
+        varying vec3 vNormal;
+        varying vec3 vPosition;
+
+        float hash(vec3 p) {
+          p = fract(p * vec3(443.897, 397.297, 491.187));
+          p += dot(p, p.yzx + 19.19);
+          return fract((p.x + p.y) * p.z);
+        }
+
+        float noise(vec3 p) {
+          vec3 i = floor(p);
+          vec3 f = fract(p);
+          f = f*f*(3.0-2.0*f);
+          return mix(
+            mix(mix(hash(i), hash(i+vec3(1,0,0)), f.x),
+                mix(hash(i+vec3(0,1,0)), hash(i+vec3(1,1,0)), f.x), f.y),
+            mix(mix(hash(i+vec3(0,0,1)), hash(i+vec3(1,0,1)), f.x),
+                mix(hash(i+vec3(0,1,1)), hash(i+vec3(1,1,1)), f.x), f.y), f.z);
+        }
+
+        void main() {
+          float fresnel = pow(1.0 - abs(dot(vNormal, vec3(0.0, 0.0, 1.0))), 1.5);
+          float n1 = noise(vPosition * 8.0 + time * 3.0);
+          float n2 = noise(vPosition * 12.0 - time * 2.0 + vec3(50.0));
+          float plasma = n1 * 0.6 + n2 * 0.4;
+          vec3 color = mix(color1, color2, plasma);
+          float intensity = fresnel * (0.5 + plasma * 0.8);
+          float pulse = 0.7 + 0.3 * sin(time * 1.5);
+          intensity *= pulse;
+          // Fusion: brighter but more ethereal
+          float fusionFade = 1.0 - fusion * 0.4;
+          float fusionBright = 1.0 + fusion * 0.6;
+          float alpha = intensity * 0.8 * fusionFade;
+          gl_FragColor = vec4(color * intensity * fusionBright * 2.5, alpha);
+        }
+      `,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      side: THREE.FrontSide,
+      depthWrite: false
+    });
+  }, []);
+
+  // Trail material (simpler wispy glow)
+  const trailMaterial = useMemo(() => {
+    return new THREE.ShaderMaterial({
+      uniforms: {
+        time: { value: 0 },
+        color: { value: new THREE.Color(0.35, 0.80, 0.90) },
+        opacity: { value: 0.4 }
+      },
+      vertexShader: `
+        varying vec3 vNormal;
+        void main() {
+          vNormal = normalize(normalMatrix * normal);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float time;
+        uniform vec3 color;
+        uniform float opacity;
+        varying vec3 vNormal;
+        void main() {
+          float fresnel = pow(1.0 - abs(dot(vNormal, vec3(0.0, 0.0, 1.0))), 2.0);
+          float pulse = 0.6 + 0.4 * sin(time * 2.0);
+          float alpha = fresnel * pulse * opacity;
+          gl_FragColor = vec4(color * fresnel * 2.0, alpha);
+        }
+      `,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+  }, []);
+
   useFrame((state) => {
     const session = state.gl.xr.getSession();
     if (!session) return;
@@ -283,8 +398,16 @@ function HandGlows() {
     const refSpace = state.gl.xr.getReferenceSpace();
     if (!refSpace) return;
 
-    // Update shader time
-    glowMaterial.uniforms.time.value = state.clock.elapsedTime;
+    const t = state.clock.elapsedTime;
+    const activeMaterial = isAlienWomb ? wispMaterial : glowMaterial;
+    activeMaterial.uniforms.time.value = t;
+
+    if (isAlienWomb) {
+      trailMaterial.uniforms.time.value = t;
+      const env = envelopmentRef?.current || 0;
+      const fusion = Math.max(0, Math.min(1.0, (env - 0.75) / 0.25));
+      wispMaterial.uniforms.fusion.value = fusion;
+    }
 
     session.inputSources.forEach((inputSource) => {
       if (!inputSource.gripSpace) return;
@@ -293,32 +416,85 @@ function HandGlows() {
       if (!pose) return;
 
       const pos = pose.transform.position;
-      const meshRef = inputSource.handedness === 'left' ? leftHandRef : rightHandRef;
-      const lightRef = inputSource.handedness === 'left' ? leftGlowRef : rightGlowRef;
+      const isLeft = inputSource.handedness === 'left';
+      const meshRef = isLeft ? leftHandRef : rightHandRef;
+      const lightRef = isLeft ? leftGlowRef : rightGlowRef;
 
       if (meshRef.current) {
         meshRef.current.position.set(pos.x, pos.y, pos.z);
         meshRef.current.visible = true;
+        meshRef.current.material = activeMaterial;
       }
       if (lightRef.current) {
         lightRef.current.position.set(pos.x, pos.y, pos.z);
       }
+
+      // Update trailing wisps for Alien Womb
+      if (isAlienWomb) {
+        trailTargetCache.current.set(pos.x, pos.y, pos.z);
+        if (isLeft) {
+          leftTrailPos1.current.lerp(trailTargetCache.current, 0.08);
+          leftTrailPos2.current.lerp(leftTrailPos1.current, 0.06);
+          if (leftTrail1Ref.current) {
+            leftTrail1Ref.current.position.copy(leftTrailPos1.current);
+            leftTrail1Ref.current.visible = true;
+          }
+          if (leftTrail2Ref.current) {
+            leftTrail2Ref.current.position.copy(leftTrailPos2.current);
+            leftTrail2Ref.current.visible = true;
+          }
+        } else {
+          rightTrailPos1.current.lerp(trailTargetCache.current, 0.08);
+          rightTrailPos2.current.lerp(rightTrailPos1.current, 0.06);
+          if (rightTrail1Ref.current) {
+            rightTrail1Ref.current.position.copy(rightTrailPos1.current);
+            rightTrail1Ref.current.visible = true;
+          }
+          if (rightTrail2Ref.current) {
+            rightTrail2Ref.current.position.copy(rightTrailPos2.current);
+            rightTrail2Ref.current.visible = true;
+          }
+        }
+      }
     });
   });
+
+  const mainRadius = isAlienWomb ? 0.06 : 0.04;
+  const lightColor = isAlienWomb ? '#55ccdd' : '#88aaff';
+  const lightIntensity = isAlienWomb ? 0.8 : 0.5;
+  const lightDistance = isAlienWomb ? 0.8 : 0.5;
 
   return (
     <>
       {/* Left hand glow */}
-      <mesh ref={leftHandRef} visible={false} material={glowMaterial}>
-        <sphereGeometry args={[0.04, 32, 32]} />
+      <mesh ref={leftHandRef} visible={false}>
+        <sphereGeometry args={[mainRadius, 16, 16]} />
       </mesh>
-      <pointLight ref={leftGlowRef} color="#88aaff" intensity={0.5} distance={0.5} />
+      <pointLight ref={leftGlowRef} color={lightColor} intensity={lightIntensity} distance={lightDistance} />
 
       {/* Right hand glow */}
-      <mesh ref={rightHandRef} visible={false} material={glowMaterial}>
-        <sphereGeometry args={[0.04, 32, 32]} />
+      <mesh ref={rightHandRef} visible={false}>
+        <sphereGeometry args={[mainRadius, 16, 16]} />
       </mesh>
-      <pointLight ref={rightGlowRef} color="#88aaff" intensity={0.5} distance={0.5} />
+      <pointLight ref={rightGlowRef} color={lightColor} intensity={lightIntensity} distance={lightDistance} />
+
+      {/* Trailing energy wisps (Alien Womb only) */}
+      {isAlienWomb && (
+        <>
+          <mesh ref={leftTrail1Ref} visible={false} material={trailMaterial}>
+            <sphereGeometry args={[0.04, 8, 8]} />
+          </mesh>
+          <mesh ref={leftTrail2Ref} visible={false} material={trailMaterial}>
+            <sphereGeometry args={[0.025, 8, 8]} />
+          </mesh>
+          <mesh ref={rightTrail1Ref} visible={false} material={trailMaterial}>
+            <sphereGeometry args={[0.04, 8, 8]} />
+          </mesh>
+          <mesh ref={rightTrail2Ref} visible={false} material={trailMaterial}>
+            <sphereGeometry args={[0.025, 8, 8]} />
+          </mesh>
+        </>
+      )}
     </>
   );
 }
@@ -776,6 +952,9 @@ function App() {
   const [audioTime, setAudioTime] = useState(0);
   const [vrSessionActive, setVrSessionActive] = useState(false);
 
+  // Shared envelopment state for Alien Womb (written by shader, read by hands)
+  const envelopmentRef = useRef(0);
+
   // Subscribe to XR store session changes to detect external session end
   useEffect(() => {
     const unsubscribe = store.subscribe((state, prevState) => {
@@ -1019,6 +1198,7 @@ function App() {
               headRotationY={headRotationY}
               introProgress={effectiveIntroProgress}
               audioTime={audioTime}
+              envelopmentRef={envelopmentRef}
             />
             <VRControllerHandler
               onBack={handleBack}
@@ -1028,7 +1208,7 @@ function App() {
               onZoomChange={handleZoomChange}
               vrSessionActive={vrSessionActive}
             />
-            <HandGlows />
+            <HandGlows shaderId={selectedShader} envelopmentRef={envelopmentRef} />
             <BackgroundMusic shouldPlay={musicStarted} shaderId={selectedShader} headRotationY={headRotationY} />
             {/* VR Intro animator - drives brightness fade using useFrame */}
             <VRIntroAnimator

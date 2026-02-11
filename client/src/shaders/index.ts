@@ -39,8 +39,8 @@ export const SHADERS: ShaderInfo[] = [
   },
   {
     id: 'oceanic-dissolution',
-    name: 'Liquid Boundaries',
-    description: 'Descend into bioluminescent depths where ego boundaries dissolve into infinite ocean',
-    color: '#0077B6'
+    name: 'Alien Womb',
+    description: 'An organic intelligence reaches for you — and you become one',
+    color: '#2DD4BF'
   }
 ];
