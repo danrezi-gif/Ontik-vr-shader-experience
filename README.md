@@ -2,7 +2,7 @@
 
 Experimental WebXR experiences exploring consciousness states through shader-based environments.
 
-🌀 **[Live Demo](https://danrezi-gif.github.io/vr-shader-experience/)**
+🌀 **[Live Demo](https://danrezi-gif.github.io/Ontik-vr-shader-experience/)**
 
 ## About
 
@@ -41,7 +41,7 @@ Situated at the intersection of consciousness research, contemplative technology
 ```bash
 # Clone the repository
 git clone https://github.com/danrezi-gif/Ontik-vr-shader-experience.git
-cd vr-shader-experience
+cd Ontik-vr-shader-experience
 
 # Serve with any static file server
 # Example with Python:
