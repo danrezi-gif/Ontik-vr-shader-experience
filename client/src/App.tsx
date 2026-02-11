@@ -12,7 +12,10 @@ import { SHADERS } from "./shaders";
 import "@fontsource/inter";
 import * as THREE from "three";
 
-const store = createXRStore();
+const store = createXRStore({
+  controller: { model: false },
+  hand: { model: false },
+});
 
 // Shader component mapping
 interface ShaderRendererProps {

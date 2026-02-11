@@ -3,16 +3,8 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
 // ALIEN WOMB - HR Giger inspired organic flowing environment
-// Quest 3 optimized: reduced from ~605 to ~200 hash ops/fragment
-// Key optimizations:
-//   - 1 Voronoi (primary membrane) instead of 7
-//   - Ridged noise for secondary veins, tendrils, fusion (no Voronoi)
-//   - FBM reduced from 4 to 3 octaves
-//   - Domain warping: 2 noise3d instead of 3 fbm
-//   - Voronoi uses squared distances (skips 27 sqrt/call)
-//   - mediump precision for Adreno 740
-//   - Cached Vector3 allocations (no per-frame GC)
-//   - Sphere 48x48 (vs 64x64)
+// Restored original Voronoi visuals with dramatically enhanced gaze + hand effects
+// Progressive envelopment → fusion
 
 const vertexShader = `
   varying vec3 vWorldPosition;
@@ -44,16 +36,16 @@ const fragmentShader = `
   varying vec3 vWorldPosition;
   varying vec2 vUv;
 
-  // --- Noise primitives (Quest 3 optimized) ---
+  // --- Noise primitives ---
 
   vec3 hash33(vec3 p) {
-    p = fract(p * vec3(443.897, 397.297, 491.187));
+    p = fract(p * vec3(443.8975, 397.2973, 491.1871));
     p += dot(p.zxy, p.yxz + 19.19);
     return fract(vec3(p.x * p.y, p.y * p.z, p.z * p.x));
   }
 
   float hash31(vec3 p) {
-    p = fract(p * vec3(443.897, 397.297, 491.187));
+    p = fract(p * vec3(443.8975, 397.2973, 491.1871));
     p += dot(p, p.yzx + 19.19);
     return fract((p.x + p.y) * p.z);
   }
@@ -62,50 +54,35 @@ const fragmentShader = `
     vec3 i = floor(p);
     vec3 f = fract(p);
     f = f * f * (3.0 - 2.0 * f);
-    return mix(
-      mix(mix(hash31(i), hash31(i + vec3(1,0,0)), f.x),
-          mix(hash31(i + vec3(0,1,0)), hash31(i + vec3(1,1,0)), f.x), f.y),
-      mix(mix(hash31(i + vec3(0,0,1)), hash31(i + vec3(1,0,1)), f.x),
-          mix(hash31(i + vec3(0,1,1)), hash31(i + vec3(1,1,1)), f.x), f.y),
+    float n = mix(
+      mix(
+        mix(dot(hash33(i), f), dot(hash33(i + vec3(1,0,0)), f - vec3(1,0,0)), f.x),
+        mix(dot(hash33(i + vec3(0,1,0)), f - vec3(0,1,0)), dot(hash33(i + vec3(1,1,0)), f - vec3(1,1,0)), f.x),
+        f.y
+      ),
+      mix(
+        mix(dot(hash33(i + vec3(0,0,1)), f - vec3(0,0,1)), dot(hash33(i + vec3(1,0,1)), f - vec3(1,0,1)), f.x),
+        mix(dot(hash33(i + vec3(0,1,1)), f - vec3(0,1,1)), dot(hash33(i + vec3(1,1,1)), f - vec3(1,1,1)), f.x),
+        f.y
+      ),
       f.z
     );
+    return n * 0.5 + 0.5;
   }
 
-  // 3-octave FBM (reduced from 4 for Quest)
   float fbm(vec3 p) {
     float val = 0.0;
     float amp = 0.5;
-    for (int i = 0; i < 3; i++) {
-      val += amp * noise3d(p);
-      p *= 2.0;
+    float freq = 1.0;
+    for (int i = 0; i < 4; i++) {
+      val += amp * noise3d(p * freq);
+      freq *= 2.0;
       amp *= 0.5;
     }
     return val;
   }
 
-  // Ridged noise — creates sharp vein/ridge patterns from smooth noise
-  // Much cheaper than Voronoi while giving similar organic vein appearance
-  float ridged(vec3 p) {
-    return 1.0 - abs(noise3d(p) * 2.0 - 1.0);
-  }
-
-  // Ridged multifractal — weighted octaves for sharper convergent ridges
-  float ridgedFbm(vec3 p) {
-    float val = 0.0;
-    float amp = 0.5;
-    float prev = 1.0;
-    for (int i = 0; i < 3; i++) {
-      float r = ridged(p);
-      val += amp * r * prev;
-      prev = r;
-      p *= 2.0;
-      amp *= 0.5;
-    }
-    return val;
-  }
-
-  // Single 3D Voronoi — only used for primary membrane (the hero pattern)
-  // Optimized: uses squared distances, sqrt only final 2 values
+  // 3D Voronoi — returns (nearest, second-nearest) distances
   vec2 voronoi(vec3 p) {
     vec3 i = floor(p);
     vec3 f = fract(p);
@@ -118,15 +95,14 @@ const fragmentShader = `
       vec3 pt = hash33(i + n);
       pt = 0.5 + 0.5 * sin(iTime * 0.3 + 6.2831 * pt);
       vec3 diff = n + pt - f;
-      float d = dot(diff, diff); // squared distance — skip sqrt
+      float d = dot(diff, diff);
       if (d < d1) { d2 = d1; d1 = d; }
       else if (d < d2) { d2 = d; }
     }
-    return vec2(sqrt(d1), sqrt(d2)); // sqrt only final pair
+    return vec2(sqrt(d1), sqrt(d2));
   }
 
-  // Vein pattern from Voronoi cell edges
-  float voronoiVeins(vec3 p, float edgeWidth) {
+  float veins(vec3 p, float edgeWidth) {
     vec2 v = voronoi(p);
     return 1.0 - smoothstep(0.0, edgeWidth, v.y - v.x);
   }
@@ -137,27 +113,28 @@ const fragmentShader = `
     float env = uEnvelopment;
     float fusion = smoothstep(0.75, 1.0, env);
 
-    // === DOMAIN WARPING (2 noise3d instead of 3 fbm — 6x cheaper) ===
+    // === DOMAIN WARPING (original quality: 3 fbm calls) ===
     vec3 wrd = rd;
-    float w1 = noise3d(rd * 2.5 + time * 0.04);
-    float w2 = noise3d(rd * 2.5 + vec3(100.0) + time * 0.03);
-    wrd += vec3(w1, w2, w1 * w2) * (0.2 + env * 0.1);
+    float w1 = fbm(rd * 2.5 + time * 0.04);
+    float w2 = fbm(rd * 2.5 + vec3(100.0) + time * 0.03);
+    float w3 = fbm(rd * 2.5 + vec3(200.0) - time * 0.05);
+    wrd += vec3(w1, w2, w3) * (0.2 + env * 0.1);
 
-    // === PRIMARY MEMBRANE: single Voronoi call (hero visual) ===
+    // === ORGANIC VEIN PATTERNS (original Voronoi quality, 2 layers) ===
     float s1 = 3.0 + env * 2.0;
-    float v1 = voronoiVeins(wrd * s1 + time * 0.06, 0.12 - env * 0.04);
+    float v1 = veins(wrd * s1 + time * 0.06, 0.12 - env * 0.04);
 
-    // === MEDIUM DETAIL: ridged noise (replaces 2nd Voronoi) ===
-    float v2 = ridgedFbm(wrd * (6.0 + env * 3.0) - time * 0.04 + vec3(50.0));
+    float s2 = 6.0 + env * 3.0;
+    float v2 = veins(wrd * s2 - time * 0.04 + vec3(50.0), 0.10);
 
-    // === FINE CAPILLARIES: ridged noise (replaces 3rd Voronoi) ===
-    float v3 = 0.0;
+    float totalVeins = v1 * 0.55 + v2 * 0.35;
+
+    // Fine capillaries appear with envelopment (noise-based, cheap)
     if (env > 0.3) {
       float fineFade = smoothstep(0.3, 0.6, env);
-      v3 = ridgedFbm(wrd * (12.0 + env * 4.0) + time * 0.08 + vec3(100.0)) * fineFade;
+      float v3 = 1.0 - abs(noise3d(wrd * (12.0 + env * 4.0) + time * 0.08 + vec3(100.0)) * 2.0 - 1.0);
+      totalVeins += v3 * fineFade * 0.2;
     }
-
-    float totalVeins = v1 * 0.5 + v2 * 0.3 + v3 * 0.3;
 
     // === COLOR PALETTE: deep blue / cyan / light pink ===
     vec3 deepBlue  = vec3(0.015, 0.03, 0.10);
@@ -167,12 +144,12 @@ const fragmentShader = `
     vec3 paleCyan  = vec3(0.35, 0.80, 0.90);
     vec3 fusionCol = vec3(0.30, 0.70, 0.85);
 
-    // Base color — single noise3d instead of fbm
+    // Base environment color (fbm for rich texture)
     float viewGrad = rd.y * 0.5 + 0.5;
-    vec3 col = mix(deepBlue, midBlue, viewGrad * 0.4 + noise3d(rd * 1.5) * 0.25);
+    vec3 col = mix(deepBlue, midBlue, viewGrad * 0.4 + fbm(rd * 1.5) * 0.25);
 
-    // Vein coloring — single noise3d instead of fbm
-    float veinMix = noise3d(wrd * 4.0 + time * 0.02) * 0.7 + 0.15;
+    // Vein coloring
+    float veinMix = fbm(wrd * 4.0 + time * 0.02) * 0.7 + 0.15;
     vec3 veinColor = mix(cyan, lightPink, veinMix);
     col += veinColor * totalVeins * (0.35 + env * 0.35);
 
@@ -181,45 +158,76 @@ const fragmentShader = `
     float heartbeat = pow(max(0.0, sin(time * 0.8)), 6.0) * 0.25;
     col *= 0.85 + breath * 0.25 + heartbeat;
 
-    // === GAZE-REACTIVE TENDRILS (ridged noise, no Voronoi) ===
-    float gazeAlign = max(0.0, dot(rd, uGazeDir));
-    float gazeInfluence = pow(gazeAlign, 3.0) * (0.3 + env * 0.5);
+    // === GAZE-REACTIVE TENDRILS (dramatically enhanced) ===
+    // The womb notices where you look and grows thick veins toward your gaze
+    {
+      float gazeAlign = max(0.0, dot(rd, uGazeDir));
 
-    if (gazeInfluence > 0.02) {
-      // Simplified warp: 1 noise3d instead of 3 fbm
-      vec3 gazeWarp = rd + (uGazeDir - rd) * gazeInfluence * 0.3;
-      gazeWarp += noise3d(gazeWarp * 3.0 + time * 0.08) * 0.15;
-      float gv = ridgedFbm(gazeWarp * (8.0 + env * 4.0) + time * 0.12);
-      col += paleCyan * gv * gazeInfluence * 0.65;
-      col += paleCyan * pow(gazeAlign, 8.0) * 0.15 * (0.5 + env);
+      // Broad attraction field — visible across a wide cone (~60°)
+      float broadField = smoothstep(0.3, 0.9, gazeAlign);
+
+      // Focused core — bright convergence at gaze center
+      float focusedCore = pow(gazeAlign, 6.0);
+
+      // Warp the space toward gaze — pull veins in that direction
+      vec3 gazeWarp = mix(rd, uGazeDir, broadField * 0.4);
+      gazeWarp += vec3(
+        fbm(gazeWarp * 3.0 + time * 0.1),
+        fbm(gazeWarp * 3.0 + vec3(30.0) + time * 0.08),
+        fbm(gazeWarp * 3.0 + vec3(60.0) - time * 0.09)
+      ) * 0.2;
+
+      // Voronoi veins that converge on the gaze point
+      float gazeVeins = veins(gazeWarp * (5.0 + env * 3.0) + time * 0.1, 0.08);
+
+      // Layer: broad organic veins flowing toward gaze
+      float gazeIntensity = 0.5 + env * 0.5;
+      col += paleCyan * gazeVeins * broadField * gazeIntensity * 0.7;
+
+      // Layer: bright convergence glow at gaze center
+      col += paleCyan * focusedCore * (0.3 + env * 0.4);
+
+      // Layer: pulsing ring around gaze point
+      float ring = smoothstep(0.85, 0.88, gazeAlign) - smoothstep(0.88, 0.92, gazeAlign);
+      col += cyan * ring * (0.4 + 0.3 * sin(time * 2.0));
     }
 
-    // === HAND-REACTIVE TENDRILS (ridged noise, no Voronoi) ===
+    // === HAND-REACTIVE TENDRILS (dramatically enhanced) ===
+    // Thick organic veins reach for each hand — much wider and brighter
 
     // Left hand
     if (uLeftHandActive > 0.5) {
       float lAlign = max(0.0, dot(rd, uLeftHandDir));
-      float lInfluence = pow(lAlign, 3.0) * (0.4 + env * 0.4);
-      if (lInfluence > 0.02) {
-        vec3 lWarp = rd + (uLeftHandDir - rd) * lInfluence * 0.3;
-        lWarp += noise3d(lWarp * 3.0 + time * 0.1) * 0.1;
-        float lv = ridgedFbm(lWarp * (7.0 + env * 3.0) + time * 0.1 + vec3(50.0));
-        col += lightPink * lv * lInfluence * 0.55;
-        col += lightPink * pow(lAlign, 10.0) * 0.12;
-      }
+      float lBroad = smoothstep(0.2, 0.85, lAlign);
+      float lCore = pow(lAlign, 5.0);
+
+      vec3 lWarp = mix(rd, uLeftHandDir, lBroad * 0.35);
+      lWarp += fbm(lWarp * 3.0 + time * 0.12) * 0.15;
+      float lv = veins(lWarp * (5.0 + env * 2.0) + time * 0.08 + vec3(50.0), 0.09);
+
+      float lIntensity = 0.5 + env * 0.5;
+      col += lightPink * lv * lBroad * lIntensity * 0.65;
+      col += lightPink * lCore * (0.3 + env * 0.4);
+
+      // Pulsing glow at hand
+      col += lightPink * pow(lAlign, 8.0) * 0.2 * (0.7 + 0.3 * sin(time * 1.5 + 1.0));
     }
 
     // Right hand
     if (uRightHandActive > 0.5) {
       float rAlign = max(0.0, dot(rd, uRightHandDir));
-      float rInfluence = pow(rAlign, 3.0) * (0.4 + env * 0.4);
-      if (rInfluence > 0.02) {
-        vec3 rWarp = rd + (uRightHandDir - rd) * rInfluence * 0.3;
-        rWarp += noise3d(rWarp * 3.0 + time * 0.1 + vec3(20.0)) * 0.1;
-        float rv = ridgedFbm(rWarp * (7.0 + env * 3.0) + time * 0.1 + vec3(80.0));
-        col += lightPink * rv * rInfluence * 0.55;
-        col += lightPink * pow(rAlign, 10.0) * 0.12;
-      }
+      float rBroad = smoothstep(0.2, 0.85, rAlign);
+      float rCore = pow(rAlign, 5.0);
+
+      vec3 rWarp = mix(rd, uRightHandDir, rBroad * 0.35);
+      rWarp += fbm(rWarp * 3.0 + time * 0.12 + vec3(20.0)) * 0.15;
+      float rv = veins(rWarp * (5.0 + env * 2.0) + time * 0.08 + vec3(80.0), 0.09);
+
+      float rIntensity = 0.5 + env * 0.5;
+      col += lightPink * rv * rBroad * rIntensity * 0.65;
+      col += lightPink * rCore * (0.3 + env * 0.4);
+
+      col += lightPink * pow(rAlign, 8.0) * 0.2 * (0.7 + 0.3 * sin(time * 1.5));
     }
 
     // === PROGRESSIVE ENVELOPMENT ===
@@ -228,22 +236,21 @@ const fragmentShader = `
     vec3 edgeColor = mix(cyan * 0.6, lightPink * 0.4, sin(time * 0.2) * 0.5 + 0.5);
     col += edgeColor * edgeClose * 0.35;
 
-    // Overall intensity increases with closeness
     col *= 1.0 + env * 0.3;
 
-    // === FUSION PHASE (ridged noise + noise3d, no Voronoi) ===
+    // === FUSION PHASE (env > 0.75) ===
     if (fusion > 0.0) {
       float fusionPulse = pow(max(0.0, sin(time * 0.6)), 3.0);
-      float fv = ridgedFbm(rd * 15.0 + time * 0.15);
-      float innerGlow = noise3d(rd * 2.0 + time * 0.08) * 0.5 + 0.5;
+      float fv = veins(rd * 12.0 + time * 0.12, 0.04 + (1.0 - fusion) * 0.04);
+      float innerGlow = fbm(rd * 2.0 + time * 0.08) * 0.5 + 0.5;
       vec3 fColor = mix(fusionCol, lightPink, fusionPulse * 0.25);
       vec3 fResult = fColor * (fv * 0.45 + innerGlow * 0.45 + 0.2);
       fResult *= 1.0 + fusionPulse * 0.5;
       col = mix(col, fResult, fusion * 0.85);
     }
 
-    // === FLUID CURRENT (single noise3d instead of fbm) ===
-    float current = noise3d(rd * 2.0 + vec3(time * 0.04, time * -0.03, time * 0.05));
+    // === FLUID CURRENT ===
+    float current = fbm(rd * 2.0 + vec3(time * 0.04, time * -0.03, time * 0.05));
     col += midBlue * current * 0.12;
 
     // === PRESSURE PULSE ===
@@ -344,7 +351,6 @@ export function OceanicDissolutionShader({
             const pose = frame.getPose(inputSource.gripSpace, refSpace);
             if (!pose) return;
             const p = pose.transform.position;
-            // Reuse cached Vector3 — no allocation per frame
             handDirCache.current.set(p.x, p.y, p.z).normalize();
             if (inputSource.handedness === 'left') {
               material.uniforms.uLeftHandDir.value.copy(handDirCache.current);
@@ -365,16 +371,12 @@ export function OceanicDissolutionShader({
       const safeDelta = Math.max(delta, 0.001);
       const angularVelocity = angularDiff / safeDelta;
 
-      // Smooth the movement signal to avoid jitter
+      // Smooth the movement signal
       smoothedMovementRef.current += (angularVelocity - smoothedMovementRef.current) * 0.05;
       const movement = smoothedMovementRef.current;
 
-      // Progressive envelopment with reactive push-pull:
-      // - Base rate always moves forward
-      // - Still → closes in faster (stillness bonus)
-      // - Moving → retreats (movement penalty)
-      // - Net positive so it always eventually reaches 1.0
-      const baseRate = 0.003;    // ~5.5 min to full if neutral
+      // Progressive envelopment with reactive push-pull
+      const baseRate = 0.003;
       const stillnessBonus = Math.max(0, 1.0 - movement * 3.0) * 0.004;
       const movementRetreat = Math.min(movement * 1.5, 0.005);
 
@@ -384,13 +386,11 @@ export function OceanicDissolutionShader({
       ));
 
       material.uniforms.uEnvelopment.value = internalEnvelopmentRef.current;
-
-      // Share with external ref for hand rendering (energy wisps)
       if (envelopmentRef) {
         envelopmentRef.current = internalEnvelopmentRef.current;
       }
     } else {
-      // Desktop preview: use elapsed time for gentle envelopment demo
+      // Desktop preview
       const elapsed = material.uniforms.iElapsedTime.value;
       const desktopEnv = Math.min(1.0, elapsed / 120.0);
       material.uniforms.uEnvelopment.value = desktopEnv;
