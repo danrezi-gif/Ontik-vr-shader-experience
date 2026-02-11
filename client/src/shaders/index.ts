@@ -36,5 +36,11 @@ export const SHADERS: ShaderInfo[] = [
     name: 'Transcendent Domain',
     description: 'Fall through an infinite crimson void, accelerating into the unknown',
     color: '#DC143C'
+  },
+  {
+    id: 'oceanic-dissolution',
+    name: 'Liquid Boundaries',
+    description: 'Descend into bioluminescent depths where ego boundaries dissolve into infinite ocean',
+    color: '#0077B6'
   }
 ];

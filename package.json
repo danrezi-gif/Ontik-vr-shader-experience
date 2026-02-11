@@ -106,6 +106,7 @@
   "devDependencies": {
     "@eslint/js": "^9.39.2",
     "@replit/vite-plugin-runtime-error-modal": "^0.0.3",
+    "@rollup/pluginutils": "^5.3.0",
     "@tailwindcss/typography": "^0.5.15",
     "@types/connect-pg-simple": "^7.0.3",
     "@types/express": "^5.0.0",

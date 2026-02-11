@@ -7,6 +7,7 @@ import { TunnelLightsShader } from "./shaders/TunnelLightsShader";
 import { InfiniteLightShader } from "./shaders/InfiniteLightShader";
 import { SacredVesselsShader } from "./shaders/SacredVesselsShader";
 import { TranscendentDomainShader } from "./shaders/TranscendentDomainShader";
+import { OceanicDissolutionShader } from "./shaders/OceanicDissolutionShader";
 import { SHADERS } from "./shaders";
 import "@fontsource/inter";
 import * as THREE from "three";
@@ -38,6 +39,8 @@ function ShaderRenderer({ shaderId, speed, pulse, brightness, colorShift, zoom, 
       return <SacredVesselsShader speed={speed} brightness={brightness} colorShift={colorShift} headRotationY={headRotationY} introProgress={introProgress} audioTime={audioTime} />;
     case 'transcendent-domain':
       return <TranscendentDomainShader speed={speed} brightness={brightness} colorShift={colorShift} headRotationY={headRotationY} introProgress={introProgress} audioTime={audioTime} />;
+    case 'oceanic-dissolution':
+      return <OceanicDissolutionShader speed={speed} brightness={brightness} colorShift={colorShift} headRotationY={headRotationY} introProgress={introProgress} audioTime={audioTime} />;
     default:
       return <AbstractWavesShader speed={speed} brightness={brightness} colorShift={colorShift} zoom={zoom} pulse={pulse} headRotationY={headRotationY} introProgress={introProgress} />;
   }
@@ -802,10 +805,14 @@ function App() {
   }, []);
 
   // Calculate effective brightness (intro affects it for abstract-waves and tunnel-lights)
-  const hasIntro = selectedShader === 'abstract-waves' || selectedShader === 'tunnel-lights' || selectedShader === 'infinite-light' || selectedShader === 'sacred-vessels' || selectedShader === 'transcendent-domain';
+  const hasIntro = selectedShader === 'abstract-waves' || selectedShader === 'tunnel-lights' || selectedShader === 'infinite-light' || selectedShader === 'sacred-vessels' || selectedShader === 'transcendent-domain' || selectedShader === 'oceanic-dissolution';
   const isInIntro = vrIntroStarted && hasIntro && !introComplete;
   const introBrightness = 0.1 + 0.9 * introProgress; // 0.1 → 1.0
   const brightness = isInIntro ? introBrightness * baseBrightness : baseBrightness;
+
+  // Desktop preview: show shader at full intensity before VR intro starts
+  // Once VR intro begins, use the animated introProgress value
+  const effectiveIntroProgress = vrIntroStarted ? introProgress : 1.0;
 
   // BPM pulse disabled for now
   const pulse = 0;
@@ -1010,7 +1017,7 @@ function App() {
               colorShift={colorShift}
               zoom={zoom}
               headRotationY={headRotationY}
-              introProgress={introProgress}
+              introProgress={effectiveIntroProgress}
               audioTime={audioTime}
             />
             <VRControllerHandler
