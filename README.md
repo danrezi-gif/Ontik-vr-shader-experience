@@ -8,8 +8,7 @@ Experimental WebXR experiences exploring consciousness states through shader-bas
 
 This project investigates how immersive VR and shader-based environments can render phenomenological states that exist beyond ordinary language—the territory where self-boundaries dissolve into something vast, ancient, and numinous.
 
-Situated at the intersection of consciousness research, contemplative technology, and experimental art, these experiences prioritize atmosphere and phenomenological accuracy over traditional game mechanics. The aesthetic draws from cosmic horror, psychedelic visuals, and mystical traditions, creating navigable spaces that evoke both wonder and existential dread.
-
+Situated at the intersection of consciousness research, contemplative technology, and experimental art, these experiences prioritize atmosphere and phenomenological accuracy over traditional game mechanics. The aesthetic draws from cosmic horror, psychedelic visuals, and mystical traditions, creating navigable spaces that evoke both wonder and existential awe.
 ## Features
 
 - **Complete 9-minute contemplative/horror experience** - Polished immersive journey
