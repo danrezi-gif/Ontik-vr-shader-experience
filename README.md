@@ -83,7 +83,7 @@ I’m particularly interested in how these visual/spatial metaphors land for peo
 
 This project is licensed under the MIT License - see the <LICENSE> file for details.
 
-The MIT License allows you to use, modify, and distribute this code freely. If you create something inspired by this work, attribution is appreciated but not required.
+The MIT License allows you to use, modify, and distribute this code freely. If you create something inspired by this work, please provide attribution. Thanks.
 
 ## Citation
 
