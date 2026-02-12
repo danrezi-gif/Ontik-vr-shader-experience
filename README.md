@@ -15,7 +15,7 @@ Situated at the intersection of consciousness research, contemplative technology
 - **4 experimental pieces** - Early explorations of different phenomenological territories
 - **WebXR-based** - Works in VR headsets and desktop browsers
 - **Custom GLSL shaders** - Real-time visual rendering of consciousness states
-- **Spatial audio design** - Headphones strongly recommended
+- **Spatial audio design** 
 
 ## Experience Guide
 
