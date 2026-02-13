@@ -2,7 +2,7 @@
 
 Experimental WebXR experiences exploring consciousness states through shader-based environments.
 
-🌀 **[Live Demo](https://danrezi-gif.github.io/Ontik-vr-shader-experience/)**
+🌀 **[Live Demo](https://ontik.app)**
 
 ## About
 
