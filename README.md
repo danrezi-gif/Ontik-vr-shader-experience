@@ -11,7 +11,7 @@ This project investigates how immersive VR and shader-based environments can ren
 Situated at the intersection of consciousness research, contemplative technology, and experimental art, these experiences prioritize atmosphere and phenomenological accuracy over traditional game mechanics. The aesthetic draws from cosmic horror, psychedelic visuals, and mystical traditions, creating navigable spaces that evoke both wonder and existential awe.
 ## Features
 
-- **Complete 9-minute contemplative/horror experience** - Polished immersive journey
+- **Complete 9-minute contemplative experience** - Polished immersive journey
 - **4 experimental pieces** - Early explorations of different phenomenological territories
 - **WebXR-based** - Works in VR headsets and desktop browsers
 - **Custom GLSL shaders** - Real-time visual rendering of consciousness states
