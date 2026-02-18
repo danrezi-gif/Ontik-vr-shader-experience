@@ -10,7 +10,7 @@ export default defineConfig({
     react(),
     glsl()
   ],
-  base: process.env.GITHUB_PAGES ? "/Ontik-vr-shader-experience/" : "/",
+  base: "/",
   root: path.resolve(import.meta.dirname, "client"),
   css: {
     postcss: {
