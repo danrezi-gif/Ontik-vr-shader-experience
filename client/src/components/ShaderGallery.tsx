@@ -190,7 +190,7 @@ function ExperienceSection({
           fontWeight: 600,
           letterSpacing: '0.3em',
           textTransform: 'uppercase',
-          fontFamily: '"Space Grotesk", system-ui, sans-serif',
+          fontFamily: '"Inter", system-ui, sans-serif',
           marginBottom: '20px',
         }}>
           {String(index + 1).padStart(2, '0')} &mdash; Portal
@@ -212,7 +212,7 @@ function ExperienceSection({
           color: '#ffffff',
           fontSize: 'clamp(2rem, 4vw, 3rem)',
           fontWeight: 200,
-          fontFamily: '"Space Grotesk", system-ui, sans-serif',
+          fontFamily: '"Inter", system-ui, sans-serif',
           letterSpacing: '-0.03em',
           lineHeight: 1.1,
           marginBottom: '20px',
@@ -226,7 +226,7 @@ function ExperienceSection({
         <p style={{
           color: 'rgba(255,255,255,0.5)',
           fontSize: '1rem',
-          fontFamily: '"Space Grotesk", system-ui, sans-serif',
+          fontFamily: '"Inter", system-ui, sans-serif',
           fontWeight: 400,
           lineHeight: 1.75,
           marginBottom: '40px',
@@ -253,7 +253,7 @@ function ExperienceSection({
             fontWeight: 600,
             letterSpacing: '0.15em',
             textTransform: 'uppercase',
-            fontFamily: '"Space Grotesk", system-ui, sans-serif',
+            fontFamily: '"Inter", system-ui, sans-serif',
             cursor: 'pointer',
             transition: 'all 0.35s cubic-bezier(0.4,0,0.2,1)',
             boxShadow: hovered ? `0 0 40px ${shader.color}40` : 'none',
@@ -306,7 +306,7 @@ export function ShaderGallery({ onSelectShader }: { onSelectShader: (id: string)
             fontWeight: 600,
             letterSpacing: '0.35em',
             textTransform: 'uppercase',
-            fontFamily: '"Space Grotesk", system-ui, sans-serif',
+            fontFamily: '"Inter", system-ui, sans-serif',
             marginBottom: '28px',
           }}>
             Contemplative VR Experiences
@@ -316,7 +316,7 @@ export function ShaderGallery({ onSelectShader }: { onSelectShader: (id: string)
             fontSize: 'clamp(3rem, 8vw, 5rem)',
             fontWeight: 200,
             color: '#ffffff',
-            fontFamily: '"Space Grotesk", system-ui, sans-serif',
+            fontFamily: '"Inter", system-ui, sans-serif',
             letterSpacing: '-0.04em',
             lineHeight: 1.0,
             marginBottom: '20px',
@@ -335,7 +335,7 @@ export function ShaderGallery({ onSelectShader }: { onSelectShader: (id: string)
           <p style={{
             color: 'rgba(255,255,255,0.35)',
             fontSize: '0.85rem',
-            fontFamily: '"Space Grotesk", system-ui, sans-serif',
+            fontFamily: '"Inter", system-ui, sans-serif',
             fontWeight: 400,
             letterSpacing: '0.06em',
           }}>
@@ -354,7 +354,7 @@ export function ShaderGallery({ onSelectShader }: { onSelectShader: (id: string)
             fontSize: '0.6rem',
             letterSpacing: '0.2em',
             textTransform: 'uppercase',
-            fontFamily: '"Space Grotesk", system-ui, sans-serif',
+            fontFamily: '"Inter", system-ui, sans-serif',
           }}>
             Scroll
           </span>
@@ -384,7 +384,7 @@ export function ShaderGallery({ onSelectShader }: { onSelectShader: (id: string)
         <p style={{
           color: 'rgba(255,255,255,0.18)',
           fontSize: '0.72rem',
-          fontFamily: '"Space Grotesk", system-ui, sans-serif',
+          fontFamily: '"Inter", system-ui, sans-serif',
           letterSpacing: '0.1em',
         }}>
           Best experienced in VR · Meta Quest optimized
