@@ -14,7 +14,7 @@ function injectFonts() {
   fontsInjected.done = true;
 }
 
-// â”€â”€ Ambient particle canvas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Ambient particle canvas ──────────────────────────────────────────────────
 function AmbientField() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -39,7 +39,7 @@ function AmbientField() {
       vy: -Math.random() * 0.12 - 0.03, // gentle upward drift
       r: Math.random() * 1.4 + 0.3,
       alpha: Math.random() * 0.25 + 0.05,
-      // warm amber / soft teal palette â€” contemplative
+      // warm amber / soft teal palette — contemplative
       hue: Math.random() > 0.5 ? 38 : 175,
     }));
 
@@ -89,7 +89,7 @@ function AmbientField() {
   );
 }
 
-// â”€â”€ Experience card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Experience card ──────────────────────────────────────────────────────────
 function ExperienceCard({
   shader, onSelect, animDelay,
 }: {
@@ -141,7 +141,7 @@ function ExperienceCard({
           : '0 8px 32px -8px rgba(0,0,0,0.5)',
         overflow: 'hidden',
       }}>
-        {/* Colour accent line at top â€” like a chapter rule */}
+        {/* Colour accent line at top — like a chapter rule */}
         <div style={{
           position: 'absolute', top: 0, left: '50%',
           transform: 'translateX(-50%)',
@@ -175,11 +175,11 @@ function ExperienceCard({
               fontFamily: '"Space Grotesk", system-ui, sans-serif',
               opacity: 0.85,
             }}>
-              ExperiÃªncia
+              Experiência
             </span>
           </div>
 
-          {/* Shader name â€” italic serif */}
+          {/* Shader name — italic serif */}
           <h3 style={{
             fontFamily: '"Cormorant Garamond", serif',
             fontStyle: 'italic',
@@ -195,7 +195,7 @@ function ExperienceCard({
             {shader.name}
           </h3>
 
-          {/* Description â€” italic, muted */}
+          {/* Description — italic, muted */}
           <p style={{
             fontFamily: '"Cormorant Garamond", serif',
             fontStyle: 'italic',
@@ -238,7 +238,7 @@ function ExperienceCard({
               transition: 'all 0.35s ease',
               boxShadow: hovered ? `0 0 18px ${shader.color}25` : 'none',
             }}>
-              Iniciar â†—
+              Iniciar ↗
             </div>
           </div>
         </div>
@@ -258,7 +258,7 @@ function ExperienceCard({
   );
 }
 
-// â”€â”€ Gallery â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Gallery ──────────────────────────────────────────────────────────────────
 export function ShaderGallery({ onSelectShader }: { onSelectShader: (id: string) => void }) {
   useEffect(() => { injectFonts(); }, []);
 
@@ -274,7 +274,7 @@ export function ShaderGallery({ onSelectShader }: { onSelectShader: (id: string)
       {/* Ambient particles */}
       <AmbientField />
 
-      {/* Warm void radial â€” subtle top-center warmth */}
+      {/* Warm void radial — subtle top-center warmth */}
       <div style={{
         position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
         background: 'radial-gradient(ellipse 80% 50% at 50% -10%, rgba(120,80,30,0.08) 0%, transparent 60%)',
@@ -290,7 +290,7 @@ export function ShaderGallery({ onSelectShader }: { onSelectShader: (id: string)
         zIndex: 1,
       }}>
 
-        {/* â”€â”€ Header â”€â”€ */}
+        {/* ── Header ── */}
         <header style={{ textAlign: 'center', marginBottom: '88px' }}>
           {/* Uppermark badge */}
           <p style={{
@@ -302,10 +302,10 @@ export function ShaderGallery({ onSelectShader }: { onSelectShader: (id: string)
             fontFamily: '"Space Grotesk", system-ui, sans-serif',
             marginBottom: '22px',
           }}>
-            SantuÃ¡rio Digital
+            Santuário Digital
           </p>
 
-          {/* Italic serif title â€” entrementes spirit */}
+          {/* Italic serif title — entrementes spirit */}
           <h1 style={{
             fontFamily: '"Cormorant Garamond", serif',
             fontStyle: 'italic',
@@ -337,10 +337,10 @@ export function ShaderGallery({ onSelectShader }: { onSelectShader: (id: string)
             marginBottom: '24px',
             fontWeight: 400,
           }}>
-            ExperiÃªncias VR Contemplativas
+            Experiências VR Contemplativas
           </p>
 
-          {/* Poetic intro â€” Cormorant italic, muted */}
+          {/* Poetic intro — Cormorant italic, muted */}
           <p style={{
             fontFamily: '"Cormorant Garamond", serif',
             fontStyle: 'italic',
@@ -351,11 +351,11 @@ export function ShaderGallery({ onSelectShader }: { onSelectShader: (id: string)
             margin: '0 auto',
             lineHeight: 1.75,
           }}>
-            Escolha um portal. Deixe o espaÃ§o interior expandir.
+            Escolha um portal. Deixe o espaço interior expandir.
           </p>
         </header>
 
-        {/* â”€â”€ Card grid â”€â”€ */}
+        {/* ── Card grid ── */}
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
@@ -372,7 +372,7 @@ export function ShaderGallery({ onSelectShader }: { onSelectShader: (id: string)
           ))}
         </div>
 
-        {/* â”€â”€ Footer â”€â”€ */}
+        {/* ── Footer ── */}
         <footer style={{ textAlign: 'center', marginTop: '110px', paddingTop: '40px' }}>
           <div style={{
             width: '48px', height: '1px',
@@ -387,7 +387,7 @@ export function ShaderGallery({ onSelectShader }: { onSelectShader: (id: string)
             letterSpacing: '0.12em',
             marginBottom: '10px',
           }}>
-            Melhor experiÃªncia no Meta Quest Â· Otimizado para WebXR
+            Melhor experiência no Meta Quest · Otimizado para WebXR
           </p>
           <p style={{
             color: 'rgba(255,255,255,0.12)',
@@ -410,7 +410,7 @@ export function ShaderGallery({ onSelectShader }: { onSelectShader: (id: string)
         .ontik-card-appear {
           animation: cardAppear 0.7s ease both;
         }
-        /* Custom scrollbar â€” minimal, warm */
+        /* Custom scrollbar — minimal, warm */
         div::-webkit-scrollbar { width: 4px; }
         div::-webkit-scrollbar-track { background: transparent; }
         div::-webkit-scrollbar-thumb { background: rgba(200,160,80,0.18); border-radius: 4px; }
