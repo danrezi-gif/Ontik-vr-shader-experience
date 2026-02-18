@@ -1,22 +1,13 @@
 import { SHADERS, ShaderInfo } from '../shaders';
 import { useEffect, useRef, useState } from 'react';
 
-// Inject fonts once
-const fontsInjected = { done: false };
-function injectFonts() {
-  if (fontsInjected.done || document.getElementById('ontik-gallery-fonts')) return;
-  const link = document.createElement('link');
-  link.id = 'ontik-gallery-fonts';
-  link.rel = 'stylesheet';
-  link.href =
-    'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400;1,500&family=Space+Grotesk:wght@300;400;500;600&display=swap';
-  document.head.appendChild(link);
-  fontsInjected.done = true;
-}
-
-// ── Ambient particle canvas ──────────────────────────────────────────────────
-function AmbientField() {
+// ── Per-section animated canvas background ───────────────────────────────────
+// Runs a fluid particle stream tuned to the shader's accent colour.
+// Uses IntersectionObserver so only the visible section's canvas animates.
+function ShaderPreviewCanvas({ color }: { color: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rafRef    = useRef<number>(0);
+  const activeRef = useRef(false);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -25,396 +16,385 @@ function AmbientField() {
     if (!ctx) return;
 
     const resize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+      canvas.width  = canvas.offsetWidth;
+      canvas.height = canvas.offsetHeight;
     };
     resize();
-    window.addEventListener('resize', resize);
 
-    // Sparse, slow-drifting motes
-    const motes = Array.from({ length: 28 }, () => ({
-      x: Math.random() * window.innerWidth,
-      y: Math.random() * window.innerHeight,
-      vx: (Math.random() - 0.5) * 0.08,
-      vy: -Math.random() * 0.12 - 0.03, // gentle upward drift
-      r: Math.random() * 1.4 + 0.3,
-      alpha: Math.random() * 0.25 + 0.05,
-      // warm amber / soft teal palette — contemplative
-      hue: Math.random() > 0.5 ? 38 : 175,
+    // Parse hex color once
+    const r = parseInt(color.slice(1, 3), 16);
+    const g = parseInt(color.slice(3, 5), 16);
+    const b = parseInt(color.slice(5, 7), 16);
+
+    // Flowing line streams — like light filaments
+    type Stream = { x: number; y: number; vy: number; vx: number; len: number; alpha: number; w: number };
+    const streams: Stream[] = Array.from({ length: 60 }, () => ({
+      x:     Math.random() * canvas.width,
+      y:     Math.random() * canvas.height,
+      vx:    (Math.random() - 0.5) * 0.4,
+      vy:    -Math.random() * 0.8 - 0.2,
+      len:   Math.random() * 80 + 20,
+      alpha: Math.random() * 0.2 + 0.04,
+      w:     Math.random() * 1.2 + 0.3,
     }));
 
-    let raf: number;
-    const tick = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      motes.forEach(m => {
-        m.x += m.vx;
-        m.y += m.vy;
-        if (m.y < -4) { m.y = canvas.height + 4; m.x = Math.random() * canvas.width; }
-        if (m.x < 0) m.x = canvas.width;
-        if (m.x > canvas.width) m.x = 0;
+    // Orb blobs (slow, large, very translucent)
+    type Orb = { x: number; y: number; vx: number; vy: number; radius: number; alpha: number };
+    const orbs: Orb[] = Array.from({ length: 4 }, () => ({
+      x:      Math.random() * canvas.width,
+      y:      Math.random() * canvas.height,
+      vx:     (Math.random() - 0.5) * 0.15,
+      vy:     (Math.random() - 0.5) * 0.15,
+      radius: Math.random() * 180 + 80,
+      alpha:  0.025 + Math.random() * 0.035,
+    }));
 
-        ctx.beginPath();
-        ctx.arc(m.x, m.y, m.r, 0, Math.PI * 2);
-        ctx.fillStyle = `hsla(${m.hue}, 60%, 70%, ${m.alpha})`;
-        ctx.fill();
+    let t = 0;
 
-        // soft aura
-        const g = ctx.createRadialGradient(m.x, m.y, 0, m.x, m.y, m.r * 5);
-        g.addColorStop(0, `hsla(${m.hue}, 60%, 70%, ${m.alpha * 0.4})`);
-        g.addColorStop(1, 'transparent');
+    const draw = () => {
+      if (!activeRef.current) return;
+      t += 0.008;
+
+      // Fade-trail instead of full clear — creates streaking effect
+      ctx.fillStyle = 'rgba(4,3,8,0.18)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Draw orbs
+      orbs.forEach(o => {
+        o.x += o.vx; o.y += o.vy;
+        if (o.x < -o.radius) o.x = canvas.width + o.radius;
+        if (o.x > canvas.width + o.radius) o.x = -o.radius;
+        if (o.y < -o.radius) o.y = canvas.height + o.radius;
+        if (o.y > canvas.height + o.radius) o.y = -o.radius;
+
+        const og = ctx.createRadialGradient(o.x, o.y, 0, o.x, o.y, o.radius);
+        og.addColorStop(0, `rgba(${r},${g},${b},${o.alpha})`);
+        og.addColorStop(1, 'transparent');
         ctx.beginPath();
-        ctx.arc(m.x, m.y, m.r * 5, 0, Math.PI * 2);
-        ctx.fillStyle = g;
+        ctx.arc(o.x, o.y, o.radius, 0, Math.PI * 2);
+        ctx.fillStyle = og;
         ctx.fill();
       });
-      raf = requestAnimationFrame(tick);
+
+      // Draw streams
+      streams.forEach(s => {
+        s.x += s.vx + Math.sin(t + s.y * 0.01) * 0.3;
+        s.y += s.vy;
+        if (s.y + s.len < 0) {
+          s.y = canvas.height + s.len;
+          s.x = Math.random() * canvas.width;
+        }
+
+        const sg = ctx.createLinearGradient(s.x, s.y, s.x + s.vx * 10, s.y - s.len);
+        sg.addColorStop(0, `rgba(${r},${g},${b},0)`);
+        sg.addColorStop(0.5, `rgba(${r},${g},${b},${s.alpha})`);
+        sg.addColorStop(1, `rgba(${r},${g},${b},0)`);
+
+        ctx.beginPath();
+        ctx.moveTo(s.x, s.y);
+        ctx.lineTo(s.x + s.vx * 10, s.y - s.len);
+        ctx.strokeStyle = sg;
+        ctx.lineWidth = s.w;
+        ctx.stroke();
+      });
+
+      rafRef.current = requestAnimationFrame(draw);
     };
-    tick();
+
+    // IntersectionObserver — only animate when visible
+    const observer = new IntersectionObserver(
+      entries => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            activeRef.current = true;
+            resize();
+            rafRef.current = requestAnimationFrame(draw);
+          } else {
+            activeRef.current = false;
+            cancelAnimationFrame(rafRef.current);
+          }
+        });
+      },
+      { threshold: 0.1 }
+    );
+    observer.observe(canvas);
+
+    const ro = new ResizeObserver(resize);
+    ro.observe(canvas);
 
     return () => {
-      window.removeEventListener('resize', resize);
-      cancelAnimationFrame(raf);
+      observer.disconnect();
+      ro.disconnect();
+      cancelAnimationFrame(rafRef.current);
     };
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [color]);
 
   return (
     <canvas
       ref={canvasRef}
       style={{
-        position: 'fixed', top: 0, left: 0,
+        position: 'absolute', inset: 0,
         width: '100%', height: '100%',
-        pointerEvents: 'none', zIndex: 0,
+        display: 'block',
+        pointerEvents: 'none',
       }}
     />
   );
 }
 
-// ── Experience card ──────────────────────────────────────────────────────────
-function ExperienceCard({
-  shader, onSelect, animDelay,
+// ── Individual experience section ────────────────────────────────────────────
+function ExperienceSection({
+  shader, index, onSelect,
 }: {
-  shader: ShaderInfo; onSelect: () => void; animDelay: number;
+  shader: ShaderInfo; index: number; onSelect: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
+  const isEven = index % 2 === 0;
 
   return (
-    <button
-      onClick={onSelect}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+    <section
       style={{
-        background: 'transparent',
-        border: 'none',
-        padding: 0,
-        cursor: 'pointer',
-        width: '100%',
-        maxWidth: '360px',
         position: 'relative',
-        textAlign: 'left',
-        transition: 'transform 0.55s cubic-bezier(0.4,0,0.2,1)',
-        transform: hovered ? 'translateY(-6px)' : 'translateY(0)',
-        animationDelay: `${animDelay}ms`,
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: isEven ? 'flex-start' : 'flex-end',
+        overflow: 'hidden',
+        borderBottom: '1px solid rgba(255,255,255,0.04)',
       }}
-      className="ontik-card-appear"
     >
-      {/* Outer ambient halo */}
+      {/* Live canvas background */}
+      <ShaderPreviewCanvas color={shader.color} />
+
+      {/* Gradient overlay — heavier on the content side */}
       <div style={{
-        position: 'absolute', top: '-18px', left: '-18px', right: '-18px', bottom: '-18px',
-        borderRadius: '28px',
-        background: `radial-gradient(ellipse at center, ${shader.color}18 0%, transparent 68%)`,
-        opacity: hovered ? 1 : 0.25,
-        transition: 'opacity 0.55s ease',
-        pointerEvents: 'none',
+        position: 'absolute', inset: 0, pointerEvents: 'none',
+        background: isEven
+          ? 'linear-gradient(to right, rgba(4,3,8,0.85) 35%, rgba(4,3,8,0.1) 100%)'
+          : 'linear-gradient(to left,  rgba(4,3,8,0.85) 35%, rgba(4,3,8,0.1) 100%)',
       }} />
 
-      {/* Card body */}
+      {/* Content panel */}
       <div style={{
-        position: 'relative',
-        background: hovered
-          ? 'linear-gradient(160deg, rgba(18,16,24,0.98) 0%, rgba(10,8,16,0.99) 100%)'
-          : 'linear-gradient(160deg, rgba(13,12,19,0.96) 0%, rgba(8,7,13,0.97) 100%)',
-        borderRadius: '20px',
-        border: `1px solid ${hovered ? shader.color + '50' : 'rgba(255,255,255,0.07)'}`,
-        transition: 'border-color 0.45s ease, background 0.45s ease, box-shadow 0.45s ease',
-        boxShadow: hovered
-          ? `0 20px 60px -10px ${shader.color}22, 0 0 0 1px ${shader.color}18`
-          : '0 8px 32px -8px rgba(0,0,0,0.5)',
-        overflow: 'hidden',
+        position: 'relative', zIndex: 10,
+        maxWidth: '480px',
+        padding: '0 5vw',
+        marginLeft:  isEven ? '5vw' : 'auto',
+        marginRight: isEven ? 'auto' : '5vw',
       }}>
-        {/* Colour accent line at top — like a chapter rule */}
+        {/* Index number — very muted */}
+        <p style={{
+          color: 'rgba(255,255,255,0.2)',
+          fontSize: '0.65rem',
+          fontWeight: 600,
+          letterSpacing: '0.3em',
+          textTransform: 'uppercase',
+          fontFamily: '"Space Grotesk", system-ui, sans-serif',
+          marginBottom: '20px',
+        }}>
+          {String(index + 1).padStart(2, '0')} &mdash; Portal
+        </p>
+
+        {/* Accent line */}
         <div style={{
-          position: 'absolute', top: 0, left: '50%',
-          transform: 'translateX(-50%)',
-          width: hovered ? '75%' : '35%',
-          height: '1.5px',
-          background: `linear-gradient(90deg, transparent, ${shader.color}, transparent)`,
-          boxShadow: `0 0 16px ${shader.color}80`,
-          transition: 'width 0.5s cubic-bezier(0.4,0,0.2,1)',
+          width: hovered ? '80px' : '40px',
+          height: '2px',
+          background: shader.color,
+          boxShadow: `0 0 12px ${shader.color}`,
+          marginBottom: '28px',
+          transition: 'width 0.5s ease',
           borderRadius: '2px',
         }} />
 
-        {/* Content */}
-        <div style={{ padding: '36px 32px 32px' }}>
-          {/* Badge label */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px',
-          }}>
-            <div style={{
-              width: '7px', height: '7px', borderRadius: '50%',
-              background: shader.color,
-              boxShadow: `0 0 ${hovered ? 14 : 6}px ${shader.color}`,
-              transition: 'box-shadow 0.4s ease',
-              flexShrink: 0,
-            }} />
-            <span style={{
-              color: shader.color,
-              fontSize: '0.62rem',
-              fontWeight: 600,
-              letterSpacing: '0.25em',
-              textTransform: 'uppercase',
-              fontFamily: '"Space Grotesk", system-ui, sans-serif',
-              opacity: 0.85,
-            }}>
-              Experiência
-            </span>
-          </div>
+        {/* Shader name */}
+        <h2 style={{
+          color: '#ffffff',
+          fontSize: 'clamp(2rem, 4vw, 3rem)',
+          fontWeight: 200,
+          fontFamily: '"Space Grotesk", system-ui, sans-serif',
+          letterSpacing: '-0.03em',
+          lineHeight: 1.1,
+          marginBottom: '20px',
+          textShadow: hovered ? `0 0 60px ${shader.color}40` : 'none',
+          transition: 'text-shadow 0.4s ease',
+        }}>
+          {shader.name}
+        </h2>
 
-          {/* Shader name — italic serif */}
-          <h3 style={{
-            fontFamily: '"Cormorant Garamond", serif',
-            fontStyle: 'italic',
-            fontSize: '2rem',
-            fontWeight: 400,
-            color: '#ffffff',
-            letterSpacing: '-0.01em',
-            lineHeight: 1.1,
-            marginBottom: '14px',
-            transition: 'text-shadow 0.4s ease',
-            textShadow: hovered ? `0 0 40px ${shader.color}50` : 'none',
-          }}>
-            {shader.name}
-          </h3>
+        {/* Description */}
+        <p style={{
+          color: 'rgba(255,255,255,0.5)',
+          fontSize: '1rem',
+          fontFamily: '"Space Grotesk", system-ui, sans-serif',
+          fontWeight: 400,
+          lineHeight: 1.75,
+          marginBottom: '40px',
+          fontStyle: 'italic',
+        }}>
+          {shader.description}
+        </p>
 
-          {/* Description — italic, muted */}
-          <p style={{
-            fontFamily: '"Cormorant Garamond", serif',
-            fontStyle: 'italic',
-            fontSize: '1.05rem',
-            color: 'rgba(255,255,255,0.4)',
-            lineHeight: 1.75,
-            marginBottom: '28px',
-            fontWeight: 300,
-          }}>
-            {shader.description}
-          </p>
-
-          {/* Footer row: enter pill */}
-          <div style={{
-            display: 'flex',
+        {/* Enter button */}
+        <button
+          onClick={onSelect}
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+          style={{
+            display: 'inline-flex',
             alignItems: 'center',
-            justifyContent: 'space-between',
-          }}>
-            <span style={{
-              fontSize: '0.7rem',
-              letterSpacing: '0.22em',
-              textTransform: 'uppercase',
-              fontFamily: '"Space Grotesk", system-ui, sans-serif',
-              fontWeight: 600,
-              color: hovered ? shader.color : 'rgba(255,255,255,0.28)',
-              transition: 'color 0.35s ease',
-            }}>
-              Entrar
-            </span>
-            <div style={{
-              borderRadius: '9999px',
-              border: `1px solid ${hovered ? shader.color : 'rgba(255,255,255,0.12)'}`,
-              background: hovered ? `${shader.color}14` : 'transparent',
-              padding: '8px 20px',
-              fontSize: '0.75rem',
-              letterSpacing: '0.12em',
-              textTransform: 'uppercase',
-              fontFamily: '"Space Grotesk", system-ui, sans-serif',
-              color: hovered ? shader.color : 'rgba(255,255,255,0.38)',
-              transition: 'all 0.35s ease',
-              boxShadow: hovered ? `0 0 18px ${shader.color}25` : 'none',
-            }}>
-              Iniciar ↗
-            </div>
-          </div>
-        </div>
+            gap: '12px',
+            background: hovered ? shader.color : 'transparent',
+            border: `1px solid ${hovered ? shader.color : 'rgba(255,255,255,0.2)'}`,
+            borderRadius: '9999px',
+            padding: '14px 32px',
+            color: hovered ? '#040308' : 'rgba(255,255,255,0.7)',
+            fontSize: '0.8rem',
+            fontWeight: 600,
+            letterSpacing: '0.15em',
+            textTransform: 'uppercase',
+            fontFamily: '"Space Grotesk", system-ui, sans-serif',
+            cursor: 'pointer',
+            transition: 'all 0.35s cubic-bezier(0.4,0,0.2,1)',
+            boxShadow: hovered ? `0 0 40px ${shader.color}40` : 'none',
+          }}
+        >
+          Enter
+          <span style={{ fontSize: '1rem', transition: 'transform 0.3s ease', transform: hovered ? 'translateX(4px)' : 'translateX(0)' }}>
+            →
+          </span>
+        </button>
       </div>
-
-      {/* Bottom reflection */}
-      <div style={{
-        position: 'absolute', bottom: '-24px', left: '15%', right: '15%',
-        height: '24px',
-        background: `linear-gradient(180deg, ${shader.color}07, transparent)`,
-        filter: 'blur(8px)',
-        opacity: hovered ? 1 : 0,
-        transition: 'opacity 0.5s ease',
-        pointerEvents: 'none',
-      }} />
-    </button>
+    </section>
   );
 }
 
 // ── Gallery ──────────────────────────────────────────────────────────────────
 export function ShaderGallery({ onSelectShader }: { onSelectShader: (id: string) => void }) {
-  useEffect(() => { injectFonts(); }, []);
-
   return (
     <div style={{
       position: 'fixed', top: 0, left: 0,
       width: '100vw', height: '100vh',
-      background: '#070610',
+      background: '#040308',
       overflowY: 'scroll', overflowX: 'hidden',
       zIndex: 100,
       WebkitOverflowScrolling: 'touch',
     }}>
-      {/* Ambient particles */}
-      <AmbientField />
 
-      {/* Warm void radial — subtle top-center warmth */}
-      <div style={{
-        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-        background: 'radial-gradient(ellipse 80% 50% at 50% -10%, rgba(120,80,30,0.08) 0%, transparent 60%)',
-        pointerEvents: 'none',
-      }} />
-
-      {/* Main content */}
-      <div style={{
+      {/* ── Hero header ── */}
+      <header style={{
         position: 'relative',
-        maxWidth: '1120px',
-        margin: '0 auto',
-        padding: '100px 24px 80px',
-        zIndex: 1,
+        height: '60vh',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        textAlign: 'center',
+        borderBottom: '1px solid rgba(255,255,255,0.06)',
+        overflow: 'hidden',
       }}>
+        {/* Subtle static background glow */}
+        <div style={{
+          position: 'absolute', inset: 0, pointerEvents: 'none',
+          background: 'radial-gradient(ellipse 70% 50% at 50% 50%, rgba(60,40,100,0.12) 0%, transparent 70%)',
+        }} />
 
-        {/* ── Header ── */}
-        <header style={{ textAlign: 'center', marginBottom: '88px' }}>
-          {/* Uppermark badge */}
+        <div style={{ position: 'relative', zIndex: 1 }}>
           <p style={{
+            color: 'rgba(255,255,255,0.3)',
             fontSize: '0.65rem',
-            fontWeight: 700,
-            letterSpacing: '0.28em',
+            fontWeight: 600,
+            letterSpacing: '0.35em',
             textTransform: 'uppercase',
-            color: 'hsl(38, 70%, 65%)',
             fontFamily: '"Space Grotesk", system-ui, sans-serif',
-            marginBottom: '22px',
+            marginBottom: '28px',
           }}>
-            Santuário Digital
+            Contemplative VR Experiences
           </p>
 
-          {/* Italic serif title — entrementes spirit */}
           <h1 style={{
-            fontFamily: '"Cormorant Garamond", serif',
-            fontStyle: 'italic',
-            fontWeight: 400,
-            fontSize: 'clamp(3.5rem, 8vw, 5.5rem)',
+            fontSize: 'clamp(3rem, 8vw, 5rem)',
+            fontWeight: 200,
             color: '#ffffff',
-            letterSpacing: '-0.03em',
+            fontFamily: '"Space Grotesk", system-ui, sans-serif',
+            letterSpacing: '-0.04em',
             lineHeight: 1.0,
             marginBottom: '20px',
-            textShadow: '0 0 100px rgba(255,255,255,0.07)',
+            textShadow: '0 0 120px rgba(255,255,255,0.08)',
           }}>
             Ontik
           </h1>
 
-          {/* Chapter rule divider */}
+          {/* Thin divider line */}
           <div style={{
-            width: '48px', height: '1px',
-            background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent)',
+            width: '40px', height: '1px',
+            background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)',
             margin: '0 auto 20px',
           }} />
 
-          {/* Sub-label */}
           <p style={{
-            fontSize: '0.75rem',
-            letterSpacing: '0.18em',
-            textTransform: 'uppercase',
             color: 'rgba(255,255,255,0.35)',
+            fontSize: '0.85rem',
             fontFamily: '"Space Grotesk", system-ui, sans-serif',
-            marginBottom: '24px',
             fontWeight: 400,
+            letterSpacing: '0.06em',
           }}>
-            Experiências VR Contemplativas
+            Choose a portal to begin
           </p>
-
-          {/* Poetic intro — Cormorant italic, muted */}
-          <p style={{
-            fontFamily: '"Cormorant Garamond", serif',
-            fontStyle: 'italic',
-            fontSize: 'clamp(1.1rem, 2vw, 1.3rem)',
-            color: 'rgba(255,255,255,0.4)',
-            fontWeight: 300,
-            maxWidth: '400px',
-            margin: '0 auto',
-            lineHeight: 1.75,
-          }}>
-            Escolha um portal. Deixe o espaço interior expandir.
-          </p>
-        </header>
-
-        {/* ── Card grid ── */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-          gap: '36px',
-          justifyItems: 'center',
-        }}>
-          {SHADERS.map((shader, i) => (
-            <ExperienceCard
-              key={shader.id}
-              shader={shader}
-              animDelay={i * 80}
-              onSelect={() => onSelectShader(shader.id)}
-            />
-          ))}
         </div>
 
-        {/* ── Footer ── */}
-        <footer style={{ textAlign: 'center', marginTop: '110px', paddingTop: '40px' }}>
-          <div style={{
-            width: '48px', height: '1px',
-            background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent)',
-            margin: '0 auto 28px',
-          }} />
-          <p style={{
+        {/* Scroll cue */}
+        <div style={{
+          position: 'absolute', bottom: '2rem', left: '50%',
+          transform: 'translateX(-50%)',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px',
+        }}>
+          <span style={{
             color: 'rgba(255,255,255,0.2)',
-            fontSize: '0.72rem',
+            fontSize: '0.6rem',
+            letterSpacing: '0.2em',
+            textTransform: 'uppercase',
             fontFamily: '"Space Grotesk", system-ui, sans-serif',
-            fontWeight: 400,
-            letterSpacing: '0.12em',
-            marginBottom: '10px',
           }}>
-            Melhor experiência no Meta Quest · Otimizado para WebXR
-          </p>
-          <p style={{
-            color: 'rgba(255,255,255,0.12)',
-            fontSize: '0.65rem',
-            fontFamily: '"Cormorant Garamond", serif',
-            fontStyle: 'italic',
-            letterSpacing: '0.08em',
-          }}>
-            ontik.app
-          </p>
-        </footer>
-      </div>
+            Scroll
+          </span>
+          <div style={{
+            width: '1px', height: '36px',
+            background: 'linear-gradient(to bottom, rgba(255,255,255,0.2), transparent)',
+          }} />
+        </div>
+      </header>
 
-      {/* CSS: card appear animation + scrollbar */}
+      {/* ── Experience sections ── */}
+      {SHADERS.map((shader, i) => (
+        <ExperienceSection
+          key={shader.id}
+          shader={shader}
+          index={i}
+          onSelect={() => onSelectShader(shader.id)}
+        />
+      ))}
+
+      {/* ── Footer ── */}
+      <footer style={{
+        textAlign: 'center',
+        padding: '48px 24px',
+        borderTop: '1px solid rgba(255,255,255,0.04)',
+      }}>
+        <p style={{
+          color: 'rgba(255,255,255,0.18)',
+          fontSize: '0.72rem',
+          fontFamily: '"Space Grotesk", system-ui, sans-serif',
+          letterSpacing: '0.1em',
+        }}>
+          Best experienced in VR · Meta Quest optimized
+        </p>
+      </footer>
+
       <style>{`
-        @keyframes cardAppear {
-          from { opacity: 0; transform: translateY(24px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-        .ontik-card-appear {
-          animation: cardAppear 0.7s ease both;
-        }
-        /* Custom scrollbar — minimal, warm */
-        div::-webkit-scrollbar { width: 4px; }
-        div::-webkit-scrollbar-track { background: transparent; }
-        div::-webkit-scrollbar-thumb { background: rgba(200,160,80,0.18); border-radius: 4px; }
-        div::-webkit-scrollbar-thumb:hover { background: rgba(200,160,80,0.35); }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
       `}</style>
     </div>
   );
