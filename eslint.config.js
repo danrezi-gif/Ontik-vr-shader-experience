@@ -80,6 +80,8 @@ export default [
         MediaStream: 'readonly',
         HTMLAudioElement: 'readonly',
         Response: 'readonly',
+        IntersectionObserver: 'readonly',
+        ResizeObserver: 'readonly',
       },
     },
     rules: {
