@@ -76,7 +76,7 @@ function ControlButtons({ onEnterVR, onBack, vrError, shaderName }: ControlButto
         fontWeight: 'bold',
         textShadow: '0 2px 8px rgba(0,0,0,0.8)',
         marginBottom: '8px',
-        fontFamily: 'Inter, sans-serif'
+        fontFamily: '"Space Grotesk", sans-serif'
       }}>
         {shaderName}
       </div>
