@@ -942,6 +942,7 @@ function AudioTimeTracker({ onTimeUpdate }: AudioTimeTrackerProps) {
 
 function App() {
   const [selectedShader, setSelectedShader] = useState<string | null>(null);
+  const [lastViewedShaderId, setLastViewedShaderId] = useState<string | null>(null);
   const [vrError, setVrError] = useState<string | null>(null);
   const [musicStarted, setMusicStarted] = useState(false);
   const [vrIntroStarted, setVrIntroStarted] = useState(false);
@@ -1044,6 +1045,7 @@ function App() {
   }, []);
 
   const handleSelectShader = useCallback((shaderId: string) => {
+    setLastViewedShaderId(shaderId);
     setSelectedShader(shaderId);
     setMusicStarted(true);
   }, []);
@@ -1168,7 +1170,7 @@ function App() {
 
   // Show gallery if no shader selected
   if (!selectedShader) {
-    return <ShaderGallery onSelectShader={handleSelectShader} />;
+    return <ShaderGallery onSelectShader={handleSelectShader} scrollToId={lastViewedShaderId} />;
   }
 
   // Show VR experience for selected shader
