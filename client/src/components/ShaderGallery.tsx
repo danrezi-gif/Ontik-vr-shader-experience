@@ -1,5 +1,5 @@
 import { SHADERS, ShaderInfo } from '../shaders';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 // ── Per-section animated canvas background ───────────────────────────────────
 // Runs a fluid particle stream tuned to the shader's accent colour.
@@ -145,15 +145,16 @@ function ShaderPreviewCanvas({ color }: { color: string }) {
 
 // ── Individual experience section ────────────────────────────────────────────
 function ExperienceSection({
-  shader, index, onSelect,
+  shader, index, onSelect, id,
 }: {
-  shader: ShaderInfo; index: number; onSelect: () => void;
+  shader: ShaderInfo; index: number; onSelect: () => void; id?: string;
 }) {
   const [hovered, setHovered] = useState(false);
   const isEven = index % 2 === 0;
 
   return (
     <section
+      id={id}
       style={{
         position: 'relative',
         minHeight: '100vh',
@@ -270,9 +271,19 @@ function ExperienceSection({
 }
 
 // ── Gallery ──────────────────────────────────────────────────────────────────
-export function ShaderGallery({ onSelectShader }: { onSelectShader: (id: string) => void }) {
+export function ShaderGallery({ onSelectShader, scrollToId }: { onSelectShader: (id: string) => void; scrollToId?: string | null }) {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    if (!scrollToId || !scrollContainerRef.current) return;
+    const target = scrollContainerRef.current.querySelector<HTMLElement>(`#experience-${scrollToId}`);
+    if (target) {
+      target.scrollIntoView({ behavior: 'instant' as ScrollBehavior });
+    }
+  }, [scrollToId]);
+
   return (
-    <div style={{
+    <div ref={scrollContainerRef} style={{
       position: 'fixed', top: 0, left: 0,
       width: '100vw', height: '100vh',
       background: '#040308',
@@ -369,6 +380,7 @@ export function ShaderGallery({ onSelectShader }: { onSelectShader: (id: string)
       {SHADERS.map((shader, i) => (
         <ExperienceSection
           key={shader.id}
+          id={`experience-${shader.id}`}
           shader={shader}
           index={i}
           onSelect={() => onSelectShader(shader.id)}
