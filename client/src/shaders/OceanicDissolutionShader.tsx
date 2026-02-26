@@ -69,27 +69,7 @@ const fragmentShader = `
       f.z);
   }
 
-  // Ridged noise — sharp vein/ridge patterns (cheaper than a 2nd Voronoi)
-  float ridged(vec3 p) {
-    return 1.0 - abs(noise3d(p) * 2.0 - 1.0);
-  }
-
-  // Ridged multifractal — 3 octaves
-  float ridgedFbm(vec3 p) {
-    float val = 0.0;
-    float amp = 0.5;
-    float prev = 1.0;
-    for (int i = 0; i < 3; i++) {
-      float r = ridged(p);
-      val += amp * r * prev;
-      prev = r;
-      p *= 2.0;
-      amp *= 0.5;
-    }
-    return val;
-  }
-
-  // Single Voronoi — hero pattern
+  // Voronoi — hero pattern (3 calls: large / medium / fine cells)
   vec2 voronoi(vec3 p) {
     vec3 i = floor(p);
     vec3 f = fract(p);
@@ -125,15 +105,15 @@ const fragmentShader = `
     float w2 = noise3d(rd * 2.5 + vec3(100.0) + time * 0.03);
     wrd += vec3(w1, w2, w1 * w2) * (0.2 + env * 0.1);
 
-    // === ORGANIC VEIN PATTERNS (single Voronoi + ridgedFbm) ===
+    // === ORGANIC VEIN PATTERNS (multi-Voronoi — original alien womb structure) ===
     float v1 = veins(wrd * (3.0 + env * 2.0) + time * 0.06, 0.12 - env * 0.04);
-    float v2 = ridgedFbm(wrd * (6.0 + env * 3.0) - time * 0.04 + vec3(50.0));
+    float v2 = veins(wrd * (7.0 + env * 2.0) - time * 0.04 + vec3(50.0), 0.10 - env * 0.03);
     float v3 = 0.0;
-    if (env > 0.3) {
-      float fineFade = smoothstep(0.3, 0.6, env);
-      v3 = ridgedFbm(wrd * (12.0 + env * 4.0) + time * 0.08 + vec3(100.0)) * fineFade;
+    if (env > 0.2) {
+      float fineFade = smoothstep(0.2, 0.5, env);
+      v3 = veins(wrd * (13.0 + env * 3.0) + time * 0.08 + vec3(100.0), 0.08) * fineFade;
     }
-    float totalVeins = v1 * 0.55 + v2 * 0.3 + v3 * 0.2;
+    float totalVeins = v1 * 0.50 + v2 * 0.32 + v3 * 0.22;
 
     // === PLASMA BALL PALETTE ===
     vec3 deepVoid    = vec3(0.0,  0.004, 0.018);
@@ -159,47 +139,49 @@ const fragmentShader = `
     float heartbeat = pow(max(0.0, sin(time * 0.8)), 6.0) * 0.25;
     col *= 0.85 + breath * 0.25 + heartbeat;
 
-    // === GAZE-REACTIVE VEINS (plasma cyan) ===
+    // === GAZE PLASMA BOLT (narrow lightning toward gaze point — plasma ball style) ===
     {
-      float gazeAlign  = max(0.0, dot(rd, uGazeDir));
-      float broadField = smoothstep(0.3, 0.9, gazeAlign);
-      float focusCore  = pow(gazeAlign, 6.0);
-
-      vec3 gazeWarp = mix(rd, uGazeDir, broadField * 0.4);
-      gazeWarp += noise3d(gazeWarp * 3.0 + time * 0.1) * 0.15;
-
-      float gv = ridgedFbm(gazeWarp * (5.0 + env * 3.0) + time * 0.1);
-      float gazeIntensity = 0.5 + env * 0.5;
-
-      col += plasmaCyan * gv * broadField * gazeIntensity * 0.5;
-      col += plasmaCyan * focusCore * (0.2 + env * 0.3);
-
-      float ring = smoothstep(0.85, 0.88, gazeAlign) - smoothstep(0.88, 0.92, gazeAlign);
-      col += plasmaCyan * ring * (0.3 + 0.25 * sin(time * 2.0));
+      float gazeAl = max(0.0, dot(rd, uGazeDir));
+      // Sinusoidal wiggle for tight plasma bolt texture
+      float gWigX  = sin(rd.y * 38.0 + iTime * 8.5) * 0.018;
+      float gWigY  = sin(rd.x * 38.0 + iTime * 7.8 + 1.57) * 0.018;
+      vec3  gWigRd = normalize(rd + vec3(gWigX, gWigY, 0.0));
+      float gWigAl = max(0.0, dot(gWigRd, uGazeDir));
+      // White lightning core
+      float gCore  = pow(gWigAl, 70.0) * 6.0;
+      // Cyan mid glow
+      float gMid   = pow(gazeAl, 20.0) * 1.5;
+      // Blue scatter
+      float gWide  = pow(gazeAl, 6.0) * 0.3;
+      // Electric flicker
+      float gFlick = 0.55 + 0.45 * sin(iTime * 9.0 + 1.1);
+      col += (gCore * plasmaWhite + gMid * plasmaCyan + gWide * plasmaBlue) * gFlick * 0.9;
     }
 
-    // === HAND-REACTIVE VEINS (plasma magenta) ===
+    // === HAND PLASMA BOLTS (narrow lightning toward hand points — plasma ball style) ===
     if (uLeftHandActive > 0.5) {
-      float lAlign = max(0.0, dot(rd, uLeftHandDir));
-      float lBroad = smoothstep(0.2, 0.85, lAlign);
-      float lCore  = pow(lAlign, 5.0);
-      vec3  lWarp  = mix(rd, uLeftHandDir, lBroad * 0.35);
-      lWarp += noise3d(lWarp * 3.0 + time * 0.12) * 0.12;
-      float lv = ridgedFbm(lWarp * (5.0 + env * 2.0) + time * 0.08 + vec3(50.0));
-      col += plasmaMag * lv * lBroad * (0.4 + env * 0.4) * 0.55;
-      col += plasmaMag * lCore * (0.2 + env * 0.3);
-      col += plasmaMag * pow(lAlign, 8.0) * 0.15 * (0.7 + 0.3 * sin(time * 1.5 + 1.0));
+      float lAl    = max(0.0, dot(rd, uLeftHandDir));
+      float lWigX  = sin(rd.y * 32.0 + iTime * 7.5 + 2.1) * 0.022;
+      float lWigY  = sin(rd.x * 32.0 + iTime * 6.8 + 0.8) * 0.022;
+      vec3  lWigRd = normalize(rd + vec3(lWigX, lWigY, 0.0));
+      float lWAl   = max(0.0, dot(lWigRd, uLeftHandDir));
+      float lCore  = pow(lWAl, 70.0) * 6.0;
+      float lMid   = pow(lAl, 20.0) * 1.5;
+      float lWide  = pow(lAl, 5.0) * 0.25;
+      float lFlick = 0.55 + 0.45 * sin(iTime * 8.5 + 3.0);
+      col += (lCore * plasmaWhite + lMid * plasmaMag + lWide * plasmaBlue) * lFlick * 0.85;
     }
     if (uRightHandActive > 0.5) {
-      float rAlign = max(0.0, dot(rd, uRightHandDir));
-      float rBroad = smoothstep(0.2, 0.85, rAlign);
-      float rCore  = pow(rAlign, 5.0);
-      vec3  rWarp  = mix(rd, uRightHandDir, rBroad * 0.35);
-      rWarp += noise3d(rWarp * 3.0 + time * 0.12 + vec3(20.0)) * 0.12;
-      float rv = ridgedFbm(rWarp * (5.0 + env * 2.0) + time * 0.08 + vec3(80.0));
-      col += plasmaMag * rv * rBroad * (0.4 + env * 0.4) * 0.55;
-      col += plasmaMag * rCore * (0.2 + env * 0.3);
-      col += plasmaMag * pow(rAlign, 8.0) * 0.15 * (0.7 + 0.3 * sin(time * 1.5));
+      float rAl    = max(0.0, dot(rd, uRightHandDir));
+      float rWigX  = sin(rd.y * 32.0 + iTime * 7.5 + 4.7) * 0.022;
+      float rWigY  = sin(rd.x * 32.0 + iTime * 6.8 + 2.3) * 0.022;
+      vec3  rWigRd = normalize(rd + vec3(rWigX, rWigY, 0.0));
+      float rWAl   = max(0.0, dot(rWigRd, uRightHandDir));
+      float rCore  = pow(rWAl, 70.0) * 6.0;
+      float rMid   = pow(rAl, 20.0) * 1.5;
+      float rWide  = pow(rAl, 5.0) * 0.25;
+      float rFlick = 0.55 + 0.45 * sin(iTime * 8.5 + 1.8);
+      col += (rCore * plasmaWhite + rMid * plasmaMag + rWide * plasmaBlue) * rFlick * 0.85;
     }
 
     // === PROGRESSIVE ENVELOPMENT ===
@@ -308,11 +290,11 @@ const MAX_BEAMS = 20;
 
 // Interval (seconds) before next auto beam fires, indexed by current beam count
 const AUTO_BEAM_INTERVALS = [
-  6, 10, 10, 9, 8,   // beams 0-4  (~43s)
-  8,  7,  7, 6, 6,   // beams 5-9  (~34s)
-  5,  5,  5, 4, 4,   // beams 10-14 (~23s)
-  4, 3.5, 3, 2.5, 2  // beams 15-19 (~15s)
-]; // total pure-auto: ~115s ≈ 1:55; interaction makes it faster
+  12, 20, 20, 18, 16,  // beams 0-4  (~86s)
+  16, 14, 14, 12, 12,  // beams 5-9  (~68s)
+  10, 10, 10,  8,  8,  // beams 10-14 (~46s)
+   8,  7,  6,  5,  4   // beams 15-19 (~30s)
+]; // total pure-auto: ~230s ≈ 3:50; interaction makes it faster
 
 export function OceanicDissolutionShader({
   speed = 1.0,
