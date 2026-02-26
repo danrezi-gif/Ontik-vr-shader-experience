@@ -29,9 +29,10 @@ interface ShaderRendererProps {
   introProgress: number;
   audioTime: number;
   envelopmentRef?: React.MutableRefObject<number>;
+  onExperienceComplete?: () => void;
 }
 
-function ShaderRenderer({ shaderId, speed, pulse, brightness, colorShift, zoom, headRotationY, introProgress, audioTime, envelopmentRef }: ShaderRendererProps) {
+function ShaderRenderer({ shaderId, speed, pulse, brightness, colorShift, zoom, headRotationY, introProgress, audioTime, envelopmentRef, onExperienceComplete }: ShaderRendererProps) {
   switch (shaderId) {
     case 'abstract-waves':
       return <AbstractWavesShader speed={speed} brightness={brightness} colorShift={colorShift} zoom={zoom} pulse={pulse} headRotationY={headRotationY} introProgress={introProgress} />;
@@ -44,7 +45,7 @@ function ShaderRenderer({ shaderId, speed, pulse, brightness, colorShift, zoom, 
     case 'transcendent-domain':
       return <TranscendentDomainShader speed={speed} brightness={brightness} colorShift={colorShift} headRotationY={headRotationY} introProgress={introProgress} audioTime={audioTime} />;
     case 'oceanic-dissolution':
-      return <OceanicDissolutionShader speed={speed} brightness={brightness} colorShift={colorShift} headRotationY={headRotationY} introProgress={introProgress} audioTime={audioTime} envelopmentRef={envelopmentRef} />;
+      return <OceanicDissolutionShader speed={speed} brightness={brightness} colorShift={colorShift} headRotationY={headRotationY} introProgress={introProgress} audioTime={audioTime} envelopmentRef={envelopmentRef} onExperienceComplete={onExperienceComplete} />;
     default:
       return <AbstractWavesShader speed={speed} brightness={brightness} colorShift={colorShift} zoom={zoom} pulse={pulse} headRotationY={headRotationY} introProgress={introProgress} />;
   }
@@ -239,265 +240,249 @@ function VRControllerHandler({ onBack, onSpeedChange, onBrightnessChange, onColo
   return null;
 }
 
-// Glowing orbs at hand/controller positions
-// When in Alien Womb shader: energy wisps with plasma noise + trailing orbs
-function HandGlows({ shaderId, envelopmentRef }: { shaderId?: string; envelopmentRef?: React.MutableRefObject<number> }) {
-  const isAlienWomb = shaderId === 'oceanic-dissolution';
+// ────────────────────────────────────────────────────────────────────────────
+// Alien Womb: "Field of Light" hand representation
+// Hands appear as ascending plasma-light columns (Bill Viola / SacredVessels
+// waterfall aesthetic) rather than physical controllers.
+// ────────────────────────────────────────────────────────────────────────────
+function AlienWombFieldOfLight({ envelopmentRef }: { envelopmentRef?: React.MutableRefObject<number> }) {
+  const leftRef  = useRef<THREE.Mesh>(null);
+  const rightRef = useRef<THREE.Mesh>(null);
+  const bodyRef  = useRef<THREE.Mesh>(null);
+  const leftLightRef  = useRef<THREE.PointLight>(null);
+  const rightLightRef = useRef<THREE.PointLight>(null);
 
-  const leftHandRef = useRef<THREE.Mesh>(null);
-  const rightHandRef = useRef<THREE.Mesh>(null);
-  const leftGlowRef = useRef<THREE.PointLight>(null);
-  const rightGlowRef = useRef<THREE.PointLight>(null);
+  // Ascending light-column shader — inspired by SacredVessels waterfall
+  const fieldMaterial = useMemo(() => new THREE.ShaderMaterial({
+    uniforms: { time: { value: 0 }, intensity: { value: 1.0 } },
+    vertexShader: `
+      varying vec3 vNormal;
+      varying vec3 vPos;
+      void main() {
+        vNormal = normalize(normalMatrix * normal);
+        vPos = position;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform float time;
+      uniform float intensity;
+      varying vec3 vNormal;
+      varying vec3 vPos;
 
-  // Trail refs for energy wisps (Alien Womb only)
-  const leftTrail1Ref = useRef<THREE.Mesh>(null);
-  const leftTrail2Ref = useRef<THREE.Mesh>(null);
-  const rightTrail1Ref = useRef<THREE.Mesh>(null);
-  const rightTrail2Ref = useRef<THREE.Mesh>(null);
-  const leftTrailPos1 = useRef(new THREE.Vector3());
-  const leftTrailPos2 = useRef(new THREE.Vector3());
-  const rightTrailPos1 = useRef(new THREE.Vector3());
-  const rightTrailPos2 = useRef(new THREE.Vector3());
-  // Cached Vector3 for trail lerp target — avoids per-frame GC on Quest
-  const trailTargetCache = useRef(new THREE.Vector3());
+      void main() {
+        float fresnel = pow(1.0 - abs(dot(vNormal, vec3(0.0, 0.0, 1.0))), 2.0);
 
-  // Standard glowing orb shader (other shaders)
-  const glowMaterial = useMemo(() => {
-    return new THREE.ShaderMaterial({
-      uniforms: {
-        time: { value: 0 },
-        color: { value: new THREE.Color(0.5, 0.7, 1.0) }
-      },
-      vertexShader: `
-        varying vec3 vNormal;
-        void main() {
-          vNormal = normalize(normalMatrix * normal);
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform float time;
-        uniform vec3 color;
-        varying vec3 vNormal;
-        void main() {
-          float intensity = pow(0.7 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.0);
-          float pulse = 0.8 + 0.2 * sin(time * 2.0);
-          gl_FragColor = vec4(color * intensity * pulse * 2.0, intensity * 0.8);
-        }
-      `,
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      side: THREE.FrontSide,
-      depthWrite: false
-    });
-  }, []);
+        // Ascending column streams (3 columns, SacredVessels style)
+        float theta = atan(vPos.z, vPos.x);
+        float ascentY = vPos.y - time * 3.5;
+        float streams = 0.0;
+        for (float ci = 0.0; ci < 3.0; ci++) {
+          float colAngle = theta + ci * 2.094;
+          float colDist  = abs(sin(colAngle * 1.5)) * 0.5;
+          float colMask  = smoothstep(0.28, 0.0, colDist);
 
-  // Energy wisp plasma shader (Alien Womb)
-  const wispMaterial = useMemo(() => {
-    return new THREE.ShaderMaterial({
-      uniforms: {
-        time: { value: 0 },
-        color1: { value: new THREE.Color(0.35, 0.80, 0.90) },
-        color2: { value: new THREE.Color(0.85, 0.45, 0.55) },
-        fusion: { value: 0 }
-      },
-      vertexShader: `
-        varying vec3 vNormal;
-        varying vec3 vPosition;
-        void main() {
-          vNormal = normalize(normalMatrix * normal);
-          vPosition = position;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform float time;
-        uniform vec3 color1;
-        uniform vec3 color2;
-        uniform float fusion;
-        varying vec3 vNormal;
-        varying vec3 vPosition;
+          // Flowing particle layers
+          float n1 = fract(sin(ascentY * 8.0 + ci * 5.3 + time * 0.4) * 43758.5);
+          float streak = smoothstep(0.3, 0.88, n1) * colMask;
 
-        float hash(vec3 p) {
-          p = fract(p * vec3(443.897, 397.297, 491.187));
-          p += dot(p, p.yzx + 19.19);
-          return fract((p.x + p.y) * p.z);
+          float ripple = sin(ascentY * 22.0 - time * 4.5 + ci * 2.094) * 0.5 + 0.5;
+          ripple = pow(ripple, 2.5) * colMask;
+
+          streams += (streak * 0.6 + ripple * 0.35) / (1.0 + ci * 0.25);
         }
 
-        float noise(vec3 p) {
-          vec3 i = floor(p);
-          vec3 f = fract(p);
-          f = f*f*(3.0-2.0*f);
-          return mix(
-            mix(mix(hash(i), hash(i+vec3(1,0,0)), f.x),
-                mix(hash(i+vec3(0,1,0)), hash(i+vec3(1,1,0)), f.x), f.y),
-            mix(mix(hash(i+vec3(0,0,1)), hash(i+vec3(1,0,1)), f.x),
-                mix(hash(i+vec3(0,1,1)), hash(i+vec3(1,1,1)), f.x), f.y), f.z);
-        }
+        float total = fresnel * 0.45 + streams * 0.75;
 
-        void main() {
-          float fresnel = pow(1.0 - abs(dot(vNormal, vec3(0.0, 0.0, 1.0))), 1.5);
-          float n1 = noise(vPosition * 8.0 + time * 3.0);
-          float n2 = noise(vPosition * 12.0 - time * 2.0 + vec3(50.0));
-          float plasma = n1 * 0.6 + n2 * 0.4;
-          vec3 color = mix(color1, color2, plasma);
-          float intensity = fresnel * (0.5 + plasma * 0.8);
-          float pulse = 0.7 + 0.3 * sin(time * 1.5);
-          intensity *= pulse;
-          // Fusion: brighter but more ethereal
-          float fusionFade = 1.0 - fusion * 0.4;
-          float fusionBright = 1.0 + fusion * 0.6;
-          float alpha = intensity * 0.8 * fusionFade;
-          gl_FragColor = vec4(color * intensity * fusionBright * 2.5, alpha);
-        }
-      `,
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      side: THREE.FrontSide,
-      depthWrite: false
-    });
-  }, []);
+        // Plasma ball colours: electric blue → near-white
+        vec3 blue  = vec3(0.05, 0.35, 1.0);
+        vec3 white = vec3(0.78, 0.93, 1.0);
+        vec3 col   = mix(blue, white, streams * 0.8 + fresnel * 0.3);
 
-  // Trail material (simpler wispy glow)
-  const trailMaterial = useMemo(() => {
-    return new THREE.ShaderMaterial({
-      uniforms: {
-        time: { value: 0 },
-        color: { value: new THREE.Color(0.35, 0.80, 0.90) },
-        opacity: { value: 0.4 }
-      },
-      vertexShader: `
-        varying vec3 vNormal;
-        void main() {
-          vNormal = normalize(normalMatrix * normal);
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform float time;
-        uniform vec3 color;
-        uniform float opacity;
-        varying vec3 vNormal;
-        void main() {
-          float fresnel = pow(1.0 - abs(dot(vNormal, vec3(0.0, 0.0, 1.0))), 2.0);
-          float pulse = 0.6 + 0.4 * sin(time * 2.0);
-          float alpha = fresnel * pulse * opacity;
-          gl_FragColor = vec4(color * fresnel * 2.0, alpha);
-        }
-      `,
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false
-    });
-  }, []);
+        gl_FragColor = vec4(col * total * 2.8 * intensity, total * 0.9);
+      }
+    `,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    side: THREE.FrontSide,
+    depthWrite: false,
+  }), []);
+
+  // Softer body aura (always visible at camera/torso position)
+  const bodyMaterial = useMemo(() => new THREE.ShaderMaterial({
+    uniforms: { time: { value: 0 } },
+    vertexShader: `
+      varying vec3 vNormal;
+      void main() {
+        vNormal = normalize(normalMatrix * normal);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform float time;
+      varying vec3 vNormal;
+      void main() {
+        float fresnel = pow(1.0 - abs(dot(vNormal, vec3(0.0, 0.0, 1.0))), 2.5);
+        float pulse   = 0.7 + 0.3 * sin(time * 1.1);
+        vec3  col     = vec3(0.2, 0.55, 1.0);
+        gl_FragColor  = vec4(col * fresnel * pulse * 1.6, fresnel * pulse * 0.5);
+      }
+    `,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    side: THREE.FrontSide,
+    depthWrite: false,
+  }), []);
 
   useFrame((state) => {
+    const t       = state.clock.elapsedTime;
     const session = state.gl.xr.getSession();
-    if (!session) return;
+    const env     = envelopmentRef?.current || 0;
 
-    const frame = state.gl.xr.getFrame();
-    if (!frame) return;
+    fieldMaterial.uniforms.time.value      = t;
+    fieldMaterial.uniforms.intensity.value = 0.7 + env * 0.5;
+    bodyMaterial.uniforms.time.value       = t;
 
-    const refSpace = state.gl.xr.getReferenceSpace();
-    if (!refSpace) return;
-
-    const t = state.clock.elapsedTime;
-    const activeMaterial = isAlienWomb ? wispMaterial : glowMaterial;
-    activeMaterial.uniforms.time.value = t;
-
-    if (isAlienWomb) {
-      trailMaterial.uniforms.time.value = t;
-      const env = envelopmentRef?.current || 0;
-      const fusion = Math.max(0, Math.min(1.0, (env - 0.75) / 0.25));
-      wispMaterial.uniforms.fusion.value = fusion;
+    // Body aura follows camera position (user's head/torso)
+    if (bodyRef.current) {
+      bodyRef.current.position.copy(state.camera.position);
+      bodyRef.current.position.y -= 0.25; // Slightly below eye level
     }
+
+    if (!session) return;
+    const frame    = state.gl.xr.getFrame();
+    const refSpace = state.gl.xr.getReferenceSpace();
+    if (!frame || !refSpace) return;
 
     session.inputSources.forEach((inputSource) => {
       if (!inputSource.gripSpace) return;
-
       const pose = frame.getPose(inputSource.gripSpace, refSpace);
       if (!pose) return;
-
-      const pos = pose.transform.position;
+      const p = pose.transform.position;
       const isLeft = inputSource.handedness === 'left';
-      const meshRef = isLeft ? leftHandRef : rightHandRef;
-      const lightRef = isLeft ? leftGlowRef : rightGlowRef;
-
-      if (meshRef.current) {
-        meshRef.current.position.set(pos.x, pos.y, pos.z);
-        meshRef.current.visible = true;
-        meshRef.current.material = activeMaterial;
+      const mRef = isLeft ? leftRef : rightRef;
+      const lRef = isLeft ? leftLightRef : rightLightRef;
+      if (mRef.current) {
+        mRef.current.position.set(p.x, p.y, p.z);
+        mRef.current.visible = true;
+        mRef.current.material = fieldMaterial;
       }
-      if (lightRef.current) {
-        lightRef.current.position.set(pos.x, pos.y, pos.z);
-      }
-
-      // Update trailing wisps for Alien Womb
-      if (isAlienWomb) {
-        trailTargetCache.current.set(pos.x, pos.y, pos.z);
-        if (isLeft) {
-          leftTrailPos1.current.lerp(trailTargetCache.current, 0.08);
-          leftTrailPos2.current.lerp(leftTrailPos1.current, 0.06);
-          if (leftTrail1Ref.current) {
-            leftTrail1Ref.current.position.copy(leftTrailPos1.current);
-            leftTrail1Ref.current.visible = true;
-          }
-          if (leftTrail2Ref.current) {
-            leftTrail2Ref.current.position.copy(leftTrailPos2.current);
-            leftTrail2Ref.current.visible = true;
-          }
-        } else {
-          rightTrailPos1.current.lerp(trailTargetCache.current, 0.08);
-          rightTrailPos2.current.lerp(rightTrailPos1.current, 0.06);
-          if (rightTrail1Ref.current) {
-            rightTrail1Ref.current.position.copy(rightTrailPos1.current);
-            rightTrail1Ref.current.visible = true;
-          }
-          if (rightTrail2Ref.current) {
-            rightTrail2Ref.current.position.copy(rightTrailPos2.current);
-            rightTrail2Ref.current.visible = true;
-          }
-        }
+      if (lRef.current) {
+        lRef.current.position.set(p.x, p.y, p.z);
       }
     });
   });
 
-  const mainRadius = isAlienWomb ? 0.06 : 0.04;
-  const lightColor = isAlienWomb ? '#55ccdd' : '#88aaff';
-  const lightIntensity = isAlienWomb ? 0.8 : 0.5;
-  const lightDistance = isAlienWomb ? 0.8 : 0.5;
+  return (
+    <>
+      {/* Body aura — user is a field of light */}
+      <mesh ref={bodyRef}>
+        <sphereGeometry args={[0.28, 14, 14]} />
+        <primitive object={bodyMaterial} attach="material" />
+      </mesh>
+
+      {/* Left hand — ascending light column */}
+      <mesh ref={leftRef} visible={false}>
+        <sphereGeometry args={[0.12, 14, 14]} />
+      </mesh>
+      <pointLight ref={leftLightRef} color="#22aaff" intensity={0.9} distance={1.0} />
+
+      {/* Right hand — ascending light column */}
+      <mesh ref={rightRef} visible={false}>
+        <sphereGeometry args={[0.12, 14, 14]} />
+      </mesh>
+      <pointLight ref={rightLightRef} color="#22aaff" intensity={0.9} distance={1.0} />
+    </>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Standard HandGlows for all other experiences
+// ────────────────────────────────────────────────────────────────────────────
+function HandGlows({ shaderId, envelopmentRef }: { shaderId?: string; envelopmentRef?: React.MutableRefObject<number> }) {
+  const isAlienWomb = shaderId === 'oceanic-dissolution';
+
+  // For Alien Womb, delegate to the field-of-light component
+  if (isAlienWomb) {
+    return <AlienWombFieldOfLight envelopmentRef={envelopmentRef} />;
+  }
+
+  return <StandardHandGlows />;
+}
+
+// Standard glowing orbs for non-Alien-Womb experiences
+function StandardHandGlows() {
+  const leftHandRef  = useRef<THREE.Mesh>(null);
+  const rightHandRef = useRef<THREE.Mesh>(null);
+  const leftGlowRef  = useRef<THREE.PointLight>(null);
+  const rightGlowRef = useRef<THREE.PointLight>(null);
+
+  const glowMaterial = useMemo(() => new THREE.ShaderMaterial({
+    uniforms: {
+      time:  { value: 0 },
+      color: { value: new THREE.Color(0.5, 0.7, 1.0) }
+    },
+    vertexShader: `
+      varying vec3 vNormal;
+      void main() {
+        vNormal = normalize(normalMatrix * normal);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform float time;
+      uniform vec3 color;
+      varying vec3 vNormal;
+      void main() {
+        float intensity = pow(0.7 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.0);
+        float pulse = 0.8 + 0.2 * sin(time * 2.0);
+        gl_FragColor = vec4(color * intensity * pulse * 2.0, intensity * 0.8);
+      }
+    `,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    side: THREE.FrontSide,
+    depthWrite: false,
+  }), []);
+
+  useFrame((state) => {
+    const session = state.gl.xr.getSession();
+    if (!session) return;
+    const frame    = state.gl.xr.getFrame();
+    const refSpace = state.gl.xr.getReferenceSpace();
+    if (!frame || !refSpace) return;
+
+    glowMaterial.uniforms.time.value = state.clock.elapsedTime;
+
+    session.inputSources.forEach((inputSource) => {
+      if (!inputSource.gripSpace) return;
+      const pose = frame.getPose(inputSource.gripSpace, refSpace);
+      if (!pose) return;
+      const pos = pose.transform.position;
+      const isLeft = inputSource.handedness === 'left';
+      const meshRef = isLeft ? leftHandRef : rightHandRef;
+      const lightRef = isLeft ? leftGlowRef : rightGlowRef;
+      if (meshRef.current) {
+        meshRef.current.position.set(pos.x, pos.y, pos.z);
+        meshRef.current.visible = true;
+        meshRef.current.material = glowMaterial;
+      }
+      if (lightRef.current) {
+        lightRef.current.position.set(pos.x, pos.y, pos.z);
+      }
+    });
+  });
 
   return (
     <>
-      {/* Left hand glow */}
       <mesh ref={leftHandRef} visible={false}>
-        <sphereGeometry args={[mainRadius, 16, 16]} />
+        <sphereGeometry args={[0.04, 16, 16]} />
       </mesh>
-      <pointLight ref={leftGlowRef} color={lightColor} intensity={lightIntensity} distance={lightDistance} />
-
-      {/* Right hand glow */}
+      <pointLight ref={leftGlowRef} color="#88aaff" intensity={0.5} distance={0.5} />
       <mesh ref={rightHandRef} visible={false}>
-        <sphereGeometry args={[mainRadius, 16, 16]} />
+        <sphereGeometry args={[0.04, 16, 16]} />
       </mesh>
-      <pointLight ref={rightGlowRef} color={lightColor} intensity={lightIntensity} distance={lightDistance} />
-
-      {/* Trailing energy wisps (Alien Womb only) */}
-      {isAlienWomb && (
-        <>
-          <mesh ref={leftTrail1Ref} visible={false} material={trailMaterial}>
-            <sphereGeometry args={[0.04, 8, 8]} />
-          </mesh>
-          <mesh ref={leftTrail2Ref} visible={false} material={trailMaterial}>
-            <sphereGeometry args={[0.025, 8, 8]} />
-          </mesh>
-          <mesh ref={rightTrail1Ref} visible={false} material={trailMaterial}>
-            <sphereGeometry args={[0.04, 8, 8]} />
-          </mesh>
-          <mesh ref={rightTrail2Ref} visible={false} material={trailMaterial}>
-            <sphereGeometry args={[0.025, 8, 8]} />
-          </mesh>
-        </>
-      )}
+      <pointLight ref={rightGlowRef} color="#88aaff" intensity={0.5} distance={0.5} />
     </>
   );
 }
@@ -1204,6 +1189,7 @@ function App() {
               introProgress={effectiveIntroProgress}
               audioTime={audioTime}
               envelopmentRef={envelopmentRef}
+              onExperienceComplete={handleBack}
             />
             <VRControllerHandler
               onBack={handleBack}
