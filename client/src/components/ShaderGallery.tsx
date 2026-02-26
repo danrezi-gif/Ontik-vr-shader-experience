@@ -278,7 +278,8 @@ export function ShaderGallery({ onSelectShader, scrollToId }: { onSelectShader: 
     if (!scrollToId || !scrollContainerRef.current) return;
     const target = scrollContainerRef.current.querySelector<HTMLElement>(`#experience-${scrollToId}`);
     if (target) {
-      target.scrollIntoView({ behavior: 'instant' as ScrollBehavior });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      target.scrollIntoView({ behavior: 'instant' as any });
     }
   }, [scrollToId]);
 
