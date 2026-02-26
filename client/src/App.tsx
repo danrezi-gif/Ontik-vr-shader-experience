@@ -252,7 +252,13 @@ function AlienWombFieldOfLight({ envelopmentRef }: { envelopmentRef?: React.Muta
   const leftLightRef  = useRef<THREE.PointLight>(null);
   const rightLightRef = useRef<THREE.PointLight>(null);
 
-  // Ascending light-column shader — inspired by SacredVessels waterfall
+  // Cached objects for cylinder orientation — avoid per-frame GC on Quest
+  const upVec      = useRef(new THREE.Vector3(0, 1, 0));
+  const rayDir     = useRef(new THREE.Vector3());
+  const leftQuat   = useRef(new THREE.Quaternion());
+  const rightQuat  = useRef(new THREE.Quaternion());
+
+  // Plasma ray shader — flowing bolt along cylinder from hand toward womb
   const fieldMaterial = useMemo(() => new THREE.ShaderMaterial({
     uniforms: { time: { value: 0 }, intensity: { value: 1.0 } },
     vertexShader: `
@@ -271,35 +277,35 @@ function AlienWombFieldOfLight({ envelopmentRef }: { envelopmentRef?: React.Muta
       varying vec3 vPos;
 
       void main() {
+        // flowT: 0 at hand end (-Y), 1 at womb end (+Y)
+        float flowT = (vPos.y + 0.35) / 0.7;
+
+        // Flowing plasma streaks along cylinder axis (toward womb)
+        float flow1 = fract(flowT * 2.5 - time * 2.2);
+        float flow2 = fract(flowT * 3.8 - time * 3.0 + 0.5);
+        float streak1 = pow(flow1, 2.0) * (1.0 - pow(flow1, 8.0));
+        float streak2 = pow(flow2, 3.0) * (1.0 - pow(flow2, 6.0));
+        float streaks  = streak1 * 0.6 + streak2 * 0.4;
+
+        // Brighter at the womb-pointing tip
+        float tipGlow = flowT * flowT;
+
+        // Silhouette glow (Fresnel-like — brightest on cylinder edges)
         float fresnel = pow(1.0 - abs(dot(vNormal, vec3(0.0, 0.0, 1.0))), 2.0);
 
-        // Ascending column streams (3 columns, SacredVessels style)
-        float theta = atan(vPos.z, vPos.x);
-        float ascentY = vPos.y - time * 3.5;
-        float streams = 0.0;
-        for (float ci = 0.0; ci < 3.0; ci++) {
-          float colAngle = theta + ci * 2.094;
-          float colDist  = abs(sin(colAngle * 1.5)) * 0.5;
-          float colMask  = smoothstep(0.28, 0.0, colDist);
+        // Electric flicker
+        float flicker = 0.7 + 0.3 * sin(time * 8.0 + vPos.y * 10.0);
 
-          // Flowing particle layers
-          float n1 = fract(sin(ascentY * 8.0 + ci * 5.3 + time * 0.4) * 43758.5);
-          float streak = smoothstep(0.3, 0.88, n1) * colMask;
+        float total = (streaks * 0.7 + fresnel * 0.4 + tipGlow * 0.3) * flicker;
 
-          float ripple = sin(ascentY * 22.0 - time * 4.5 + ci * 2.094) * 0.5 + 0.5;
-          ripple = pow(ripple, 2.5) * colMask;
-
-          streams += (streak * 0.6 + ripple * 0.35) / (1.0 + ci * 0.25);
-        }
-
-        float total = fresnel * 0.45 + streams * 0.75;
-
-        // Plasma ball colours: electric blue → near-white
+        // Plasma colours: electric blue → cyan → white at tip
         vec3 blue  = vec3(0.05, 0.35, 1.0);
+        vec3 cyan  = vec3(0.0,  0.85, 1.0);
         vec3 white = vec3(0.78, 0.93, 1.0);
-        vec3 col   = mix(blue, white, streams * 0.8 + fresnel * 0.3);
+        vec3 col   = mix(blue, cyan, flowT * 0.7);
+        col = mix(col, white, streaks * 0.5 + tipGlow * 0.3);
 
-        gl_FragColor = vec4(col * total * 2.8 * intensity, total * 0.9);
+        gl_FragColor = vec4(col * total * 3.0 * intensity, total * 0.9);
       }
     `,
     transparent: true,
@@ -363,7 +369,14 @@ function AlienWombFieldOfLight({ envelopmentRef }: { envelopmentRef?: React.Muta
       const mRef = isLeft ? leftRef : rightRef;
       const lRef = isLeft ? leftLightRef : rightLightRef;
       if (mRef.current) {
-        mRef.current.position.set(p.x, p.y, p.z);
+        // Orient cylinder: local +Y points from hand outward toward womb
+        rayDir.current.set(p.x, p.y, p.z).normalize();
+        const qRef = isLeft ? leftQuat : rightQuat;
+        qRef.current.setFromUnitVectors(upVec.current, rayDir.current);
+        mRef.current.quaternion.copy(qRef.current);
+        // Offset center so cylinder base starts at hand, tip points at womb
+        mRef.current.position.set(p.x, p.y, p.z)
+          .addScaledVector(rayDir.current, 0.35);
         mRef.current.visible = true;
         mRef.current.material = fieldMaterial;
       }
@@ -381,15 +394,15 @@ function AlienWombFieldOfLight({ envelopmentRef }: { envelopmentRef?: React.Muta
         <primitive object={bodyMaterial} attach="material" />
       </mesh>
 
-      {/* Left hand — ascending light column */}
+      {/* Left hand — plasma ray cylinder pointing toward womb */}
       <mesh ref={leftRef} visible={false}>
-        <sphereGeometry args={[0.12, 14, 14]} />
+        <cylinderGeometry args={[0.006, 0.014, 0.7, 8]} />
       </mesh>
       <pointLight ref={leftLightRef} color="#22aaff" intensity={0.9} distance={1.0} />
 
-      {/* Right hand — ascending light column */}
+      {/* Right hand — plasma ray cylinder pointing toward womb */}
       <mesh ref={rightRef} visible={false}>
-        <sphereGeometry args={[0.12, 14, 14]} />
+        <cylinderGeometry args={[0.006, 0.014, 0.7, 8]} />
       </mesh>
       <pointLight ref={rightLightRef} color="#22aaff" intensity={0.9} distance={1.0} />
     </>
