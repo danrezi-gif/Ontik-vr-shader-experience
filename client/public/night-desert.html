@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Night Desert</title>
+  <style>
+    body { margin: 0; background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; }
+  </style>
+</head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/p5@1.11.2/lib/p5.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/p5.brush@1.1.2/dist/p5.brush.min.js"></script>
+<script>
+new p5(function(p) {
+
+  brush.instance(p);
+
+  p.setup = function() {
+    p.createCanvas(900, 600, p.WEBGL);
+    p.noLoop();
+    p.randomSeed(42);
+    p.noiseSeed(42);
+
+    p.translate(-p.width / 2, -p.height / 2);
+
+    // ── Sky gradient (plain p5 fills) ─────────────────────────────────────────
+    p.noStroke();
+    let skyColors = [
+      [8, 8, 22],
+      [12, 10, 32],
+      [18, 14, 45],
+      [22, 18, 55],
+      [28, 22, 50],
+    ];
+    for (let i = 0; i < skyColors.length; i++) {
+      let y = (i / skyColors.length) * 380;
+      let h = (p.height / skyColors.length) + 10;
+      let [r, g, b] = skyColors[i];
+      p.fill(r, g, b);
+      p.rect(0, y, p.width, h);
+    }
+
+    // ── Stars ─────────────────────────────────────────────────────────────────
+    for (let i = 0; i < 260; i++) {
+      let sx    = p.random(p.width);
+      let sy    = p.random(0, 330);
+      let alpha = p.random(120, 255);
+      let size  = p.random(0.4, 2.5);
+      brush.set("marker", p.color(220, 220, alpha), size * 0.25);
+      brush.line(sx, sy, sx + p.random(-0.6, 0.6), sy + p.random(-0.6, 0.6));
+    }
+
+    // ── Crescent moon ─────────────────────────────────────────────────────────
+    let mx = 680, my = 85, mr = 44;
+
+    // Glow halo
+    p.noStroke();
+    for (let r = mr * 3; r > mr * 0.9; r -= 4) {
+      let alpha = p.map(r, mr * 0.9, mr * 3, 30, 0);
+      p.fill(240, 220, 140, alpha);
+      p.ellipse(mx, my, r * 2, r * 2);
+    }
+
+    // Moon disc
+    p.fill(248, 236, 190);
+    p.noStroke();
+    p.ellipse(mx, my, mr * 2, mr * 2);
+
+    // Carve crescent shadow
+    p.fill(18, 14, 42);
+    p.ellipse(mx + 20, my - 10, mr * 1.72, mr * 1.72);
+
+    // ── Far dune layer ────────────────────────────────────────────────────────
+    p.fill(18, 16, 42);
+    p.noStroke();
+    p.beginShape();
+    p.vertex(0, p.height);
+    p.vertex(0, 310);
+    for (let i = 0; i <= 80; i++) {
+      let x = (i / 80) * p.width;
+      let y = 310 + p.noise(i * 0.06, 1) * 55 - p.noise(i * 0.13, 2) * 22;
+      p.vertex(x, y);
+    }
+    p.vertex(p.width, p.height);
+    p.endShape(p.CLOSE);
+
+    // ── Mid dune layer ────────────────────────────────────────────────────────
+    p.fill(12, 10, 26);
+    p.beginShape();
+    p.vertex(0, p.height);
+    p.vertex(0, 370);
+    for (let i = 0; i <= 80; i++) {
+      let x = (i / 80) * p.width;
+      let y = 372 + p.noise(i * 0.07, 5) * 65 - p.noise(i * 0.14, 6) * 20;
+      p.vertex(x, y);
+    }
+    p.vertex(p.width, p.height);
+    p.endShape(p.CLOSE);
+
+    // ── Foreground dune ───────────────────────────────────────────────────────
+    p.fill(20, 13, 7);
+    p.beginShape();
+    p.vertex(0, p.height);
+    p.vertex(-10, 455);
+    for (let i = 0; i <= 80; i++) {
+      let x = (i / 80) * p.width;
+      let y = 440 + p.noise(i * 0.05, 10) * 85
+                  - p.noise(i * 0.11, 11) * 28
+                  + Math.sin(i * 0.18) * 18;
+      p.vertex(x, y);
+    }
+    p.vertex(p.width + 10, p.height);
+    p.endShape(p.CLOSE);
+
+    // ── Moonlit rim on foreground dune ────────────────────────────────────────
+    brush.noFill();
+    for (let i = 0; i < 79; i++) {
+      let x0 = (i / 80) * p.width;
+      let x1 = ((i + 1) / 80) * p.width;
+      let y0 = 440 + p.noise(i * 0.05, 10) * 85
+                   - p.noise(i * 0.11, 11) * 28
+                   + Math.sin(i * 0.18) * 18;
+      let y1 = 440 + p.noise((i + 1) * 0.05, 10) * 85
+                   - p.noise((i + 1) * 0.11, 11) * 28
+                   + Math.sin((i + 1) * 0.18) * 18;
+      let w = p.random(0.3, 0.8);
+      brush.set("2B", p.color(70 + p.random(30), 55 + p.random(20), 38 + p.random(12)), w);
+      brush.line(x0, y0, x1, y1);
+    }
+
+    // ── Wind-swept sand streaks ───────────────────────────────────────────────
+    for (let i = 0; i < 40; i++) {
+      let sx  = p.random(p.width);
+      let sy  = p.random(460, 590);
+      let len = p.random(25, 110);
+      brush.set("marker", p.color(38 + p.random(18), 26 + p.random(12), 10 + p.random(8)), p.random(0.18, 0.42));
+      brush.line(sx, sy, sx + len, sy + p.random(-3, 3));
+    }
+
+    // ── Desert scrub silhouettes ──────────────────────────────────────────────
+    let plants = [105, 270, 430, 620, 780, 860];
+    for (let px of plants) {
+      let bx = px + p.random(-20, 20);
+      let by = 450 + p.noise(bx * 0.05, 10) * 85 - p.noise(bx * 0.11, 11) * 28 + Math.sin(bx * 0.18 / 80 * p.PI * 2) * 18;
+      by += p.random(-6, 6);
+      let h = p.random(14, 32);
+      brush.set("charcoal", p.color(6, 5, 14), p.random(0.5, 0.9));
+      brush.line(bx, by, bx, by - h);
+      for (let b = 0; b < p.floor(p.random(3, 7)); b++) {
+        let ang  = p.random(-p.PI * 0.55, p.PI * 0.55);
+        let blen = p.random(6, 16);
+        brush.set("charcoal", p.color(6, 5, 14), p.random(0.4, 0.7));
+        brush.line(
+          bx, by - h * p.random(0.3, 0.9),
+          bx + Math.sin(ang) * blen,
+          by - h * 0.5 - Math.abs(Math.cos(ang)) * blen * 0.8
+        );
+      }
+    }
+  };
+
+});
+</script>
+</body>
+</html>
