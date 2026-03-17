@@ -1,5 +1,18 @@
 # Claude Development Notes - VR Shader Experiences
 
+## Claude Code Skills
+
+### p5-brush
+Installed at `~/.claude/skills/p5-brush`. Generates standalone HTML generative art files using p5.js 2.x + p5.brush v2 library.
+
+**Usage**: `/p5-brush <description>` — e.g. `/p5-brush a stormy ocean in watercolor`
+
+**Source**: https://github.com/progen/p5-brush-skill
+
+To reinstall: copy/symlink the `SKILL.md` from the above repo into `~/.claude/skills/p5-brush/SKILL.md`
+
+---
+
 ## WORKFLOW RULES - READ FIRST
 1. **ASK before running build/lint** - Never auto-build
 2. **Read this file first** when starting a new session
