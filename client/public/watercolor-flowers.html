@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Watercolor Flowers</title>
+  <style>
+    body { margin: 0; background: #f5efe6; display: flex; justify-content: center; align-items: center; height: 100vh; }
+  </style>
+</head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/p5@1.11.2/lib/p5.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/p5.brush@1.1.2/dist/p5.brush.min.js"></script>
+<script>
+new p5(function(p) {
+
+  brush.instance(p);
+
+  // Palette: soft watercolor hues
+  const palettes = [
+    { petals: ["#e8a0b4", "#d4607a", "#f2c4ce"], center: "#f7d66e" }, // rose pink
+    { petals: ["#b8a0d8", "#8b6bb1", "#d4c4ec"], center: "#f9e47a" }, // lavender
+    { petals: ["#f4b860", "#e8843a", "#fad49a"], center: "#c84b2f" }, // marigold
+    { petals: ["#a8d8a8", "#5a9e5a", "#c8e8c8"], center: "#f7d66e" }, // green daisy
+    { petals: ["#f7c59f", "#e8865a", "#fde0c8"], center: "#8b3a20" }, // peach poppy
+    { petals: ["#aec6e8", "#5a84b8", "#c8daf4"], center: "#f9e47a" }, // cornflower
+  ];
+
+  function drawFlower(cx, cy, size, palette, seed) {
+    p.randomSeed(seed);
+
+    let petalCount = p.floor(p.random(5, 9));
+    let petalLen   = size * 0.9;
+    let petalW     = size * 0.45;
+
+    // ── Petals (back layer, lighter) ──────────────────────────────────────
+    brush.noStroke();
+    brush.fill(palette.petals[2], 0.5);
+    for (let i = 0; i < petalCount; i++) {
+      let angle = (i / petalCount) * p.TWO_PI + p.random(-0.15, 0.15);
+      let px = cx + Math.cos(angle) * petalLen * 0.5;
+      let py = cy + Math.sin(angle) * petalLen * 0.5;
+      brush.circle(px, py, petalW + p.random(-4, 4));
+    }
+
+    // ── Petals (main layer) ───────────────────────────────────────────────
+    brush.fill(palette.petals[0], 0.65);
+    for (let i = 0; i < petalCount; i++) {
+      let angle = (i / petalCount) * p.TWO_PI + p.random(-0.12, 0.12);
+      let px = cx + Math.cos(angle) * petalLen * 0.48;
+      let py = cy + Math.sin(angle) * petalLen * 0.48;
+      brush.circle(px, py, petalW * 0.85 + p.random(-3, 3));
+    }
+
+    // ── Petal veins ───────────────────────────────────────────────────────
+    brush.noFill();
+    brush.set("2B", palette.petals[1], 0.25);
+    for (let i = 0; i < petalCount; i++) {
+      let angle = (i / petalCount) * p.TWO_PI;
+      let ex = cx + Math.cos(angle) * petalLen * 0.85;
+      let ey = cy + Math.sin(angle) * petalLen * 0.85;
+      brush.line(cx, cy, ex, ey);
+    }
+
+    // ── Center ────────────────────────────────────────────────────────────
+    brush.fill(palette.center, 0.85);
+    brush.noStroke();
+    brush.circle(cx, cy, size * 0.28);
+
+    // Center dots
+    brush.set("marker", p.color(100, 70, 20), 0.35);
+    for (let i = 0; i < 6; i++) {
+      let ang = p.random(p.TWO_PI);
+      let r   = p.random(2, size * 0.1);
+      brush.line(
+        cx + Math.cos(ang) * r, cy + Math.sin(ang) * r,
+        cx + Math.cos(ang) * r + p.random(-1, 1), cy + Math.sin(ang) * r + p.random(-1, 1)
+      );
+    }
+  }
+
+  function drawStem(x1, y1, x2, y2, leafColor) {
+    // Stem
+    brush.set("2B", p.color(60, 95, 55), 0.7);
+    brush.line(x1, y1, x2, y2);
+    brush.set("2B", p.color(80, 115, 65), 0.4);
+    brush.line(x1 + 1, y1, x2 + 1, y2);
+
+    // Leaf
+    let lx = p.lerp(x1, x2, p.random(0.35, 0.65));
+    let ly = p.lerp(y1, y2, p.random(0.35, 0.65));
+    let side = p.random() > 0.5 ? 1 : -1;
+    let lx2  = lx + side * p.random(20, 38);
+    let ly2  = ly - p.random(10, 22);
+
+    brush.fill(leafColor, 0.55);
+    brush.noStroke();
+    brush.circle((lx + lx2) / 2, (ly + ly2) / 2, 18);
+
+    brush.set("2B", p.color(50, 85, 45), 0.35);
+    brush.line(lx, ly, lx2, ly2);
+  }
+
+  p.setup = function() {
+    p.createCanvas(860, 600, p.WEBGL);
+    p.noLoop();
+    p.randomSeed(77);
+    p.noiseSeed(77);
+
+    p.translate(-p.width / 2, -p.height / 2);
+
+    // ── Paper wash background ──────────────────────────────────────────────
+    p.noStroke();
+    p.fill(250, 244, 234);
+    p.rect(0, 0, p.width, p.height);
+
+    // Subtle warm tone washes
+    brush.noStroke();
+    brush.fill(p.color(240, 220, 195), 0.08);
+    brush.circle(200, 150, 320);
+    brush.fill(p.color(220, 200, 230), 0.06);
+    brush.circle(650, 400, 280);
+    brush.fill(p.color(200, 230, 210), 0.05);
+    brush.circle(420, 500, 200);
+
+    // ── Flowers config: [cx, cy, size, paletteIndex, seed] ────────────────
+    let flowers = [
+      [160, 230, 72,  0, 11],
+      [340, 170, 58,  1, 22],
+      [530, 220, 80,  2, 33],
+      [700, 160, 64,  5, 44],
+      [240, 420, 68,  3, 55],
+      [460, 430, 74,  4, 66],
+      [680, 390, 60,  1, 77],
+      [800, 270, 50,  0, 88],
+      [ 80, 460, 46,  2, 99],
+    ];
+
+    // ── Stems first (behind flowers) ──────────────────────────────────────
+    let leafColor = p.color(75, 120, 65);
+    flowers.forEach(([cx, cy, size]) => {
+      let stemLen = size * 1.6 + p.random(20, 40);
+      drawStem(cx, cy + size * 0.14, cx + p.random(-12, 12), cy + stemLen, leafColor);
+    });
+
+    // ── Draw flowers ──────────────────────────────────────────────────────
+    flowers.forEach(([cx, cy, size, pi, seed]) => {
+      drawFlower(cx, cy, size, palettes[pi], seed);
+    });
+
+    // ── Scattered loose petals ─────────────────────────────────────────────
+    let scatterPalettes = [palettes[0], palettes[1], palettes[2], palettes[4]];
+    for (let i = 0; i < 14; i++) {
+      let sp  = scatterPalettes[p.floor(p.random(scatterPalettes.length))];
+      let sx  = p.random(40, p.width - 40);
+      let sy  = p.random(40, p.height - 40);
+      let rot = p.random(p.TWO_PI);
+      let r   = p.random(9, 18);
+      brush.fill(sp.petals[0], 0.45);
+      brush.noStroke();
+      brush.circle(sx, sy, r);
+    }
+
+    // ── Stem line ground hint ──────────────────────────────────────────────
+    brush.set("2B", p.color(90, 110, 75), 0.22);
+    brush.line(0, p.height - 18, p.width, p.height - 18);
+  };
+
+});
+</script>
+</body>
+</html>
