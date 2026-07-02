@@ -28,7 +28,6 @@ export function useAudioAnalyzer() {
   const analyze = useCallback(() => {
     if (!analyzerRef.current || !dataArrayRef.current) return;
 
-    // @ts-expect-error - TypeScript strict mode issue with Uint8Array buffer types
     analyzerRef.current.getByteFrequencyData(dataArrayRef.current);
     const data = dataArrayRef.current;
     const bufferLength = data.length;

@@ -8,6 +8,12 @@ export interface ShaderInfo {
 
 export const SHADERS: ShaderInfo[] = [
   {
+    id: 'prismatic-bloom',
+    name: 'Prismatic Bloom',
+    description: 'A living kaleidoscopic mandala breathes open — geometry blooms out of darkness',
+    color: '#c084fc'
+  },
+  {
     id: 'abstract-waves',
     name: 'The Cosmic Attractor',
     description: 'Luminous orbs journey towards the kernel of spacetime',
@@ -42,5 +48,11 @@ export const SHADERS: ShaderInfo[] = [
     name: 'Alien Womb',
     description: 'An organic intelligence reaches for you — and you become one',
     color: '#2DD4BF'
+  },
+  {
+    id: 'solar-return',
+    name: 'Solar Return',
+    description: 'An endless dawn — integration, warmth, the slow return to the body',
+    color: '#fbbf24'
   }
 ];

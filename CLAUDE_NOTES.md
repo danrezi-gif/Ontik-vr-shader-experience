@@ -21,7 +21,32 @@ To reinstall: copy/symlink the `SKILL.md` from the above repo into `~/.claude/sk
 
 ---
 
-## Latest: TranscendentDomainShader.tsx (Transcendent Domain)
+## Latest: The Journey — unified longform experience (2026-07-02)
+
+### What Was Built
+- **Journey mode**: single ~21-min arc chaining 7 chapters with fade-through-black
+  transitions (6s), driven by `JourneyConductor` (useFrame, VR-safe timing).
+  Timeline in `client/src/journey/journey.ts`.
+- **Original generative soundtrack**: `client/src/audio/generativeSoundtrack.ts` —
+  WebAudio drones/pads/sub/shimmer per chapter mood, crossfades on chapter change.
+  Replaces mp3 tracks in journey mode (mp3s are NOT store-licensing-safe; gallery
+  single-mode still uses them for now — replace before store submission).
+- **New shaders**: `PrismaticBloomShader` (kaleidoscopic onset, chapter 1),
+  `SolarReturnShader` (dawn comedown, chapter 7). Both loop-free angular math,
+  Quest-friendly.
+- **Frontpage remodel**: hero = Begin the Journey CTA + chapter arc strip;
+  sections reframed as chapters.
+
+### Key wiring (App.tsx)
+- `journeyActive` overrides `selectedShader` via `activeShaderId`
+- journey fade multiplies brightness; per-shader intros disabled in journey mode
+- `journeySoundtrack.ensureRunning()` called in VRControllerHandler frame loop
+  (Quest suspends AudioContext on VR entry)
+- journey passes `journeyChapterTime` as `audioTime` to audio-synced shaders
+
+---
+
+## Previous: TranscendentDomainShader.tsx (Transcendent Domain)
 
 ### What Was Built (2026-02-07)
 - **New experience**: Cosmic volumetric fractal journey

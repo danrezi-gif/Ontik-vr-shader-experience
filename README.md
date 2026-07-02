@@ -1,6 +1,6 @@
-# Ontik: VR Shader Experience
+# Ontik: A Longform Psychedelic VR Journey
 
-Experimental WebXR experiences exploring consciousness states through shader-based environments.
+One continuous ~21-minute abstract psychedelic arc through seven shader worlds, scored by an original generative soundtrack — built with WebXR for Meta Quest and desktop browsers.
 
 🌀 **[Live Demo](https://ontik.app)**
 
@@ -8,20 +8,42 @@ Experimental WebXR experiences exploring consciousness states through shader-bas
 
 This project investigates how immersive VR and shader-based environments can render phenomenological states that exist beyond ordinary language—the territory where self-boundaries dissolve into something vast, ancient, and numinous.
 
-Situated at the intersection of consciousness research, contemplative technology, and experimental art, these experiences prioritize atmosphere and phenomenological accuracy over traditional game mechanics. The aesthetic draws from cosmic horror, psychedelic visuals, and mystical traditions, creating navigable spaces that evoke both wonder and existential awe.
+Situated at the intersection of consciousness research, contemplative technology, and experimental art, the experience prioritizes atmosphere and phenomenological accuracy over traditional game mechanics. The aesthetic draws from cosmic horror, psychedelic visuals, and mystical traditions, creating navigable spaces that evoke both wonder and existential awe.
+
+## The Journey
+
+The centerpiece is a single unified experience that follows the arc of a psychedelic session:
+
+| # | Phase | Chapter | World |
+|---|-------|---------|-------|
+| 1 | Onset | Prismatic Bloom | A living kaleidoscopic mandala breathes open |
+| 2 | Deepening | The Cosmic Attractor | Luminous orbs stream toward the kernel of spacetime |
+| 3 | Threshold | Alpha and Omega | A sacred passage between being and non-being |
+| 4 | Ascent | The Ascension | Luminous streams of sacred water |
+| 5 | The Void | Transcendent Domain | An infinite crimson corridor, accelerating |
+| 6 | Dissolution | Alien Womb | An organic intelligence reaches for you |
+| 7 | Return | Solar Return | An endless dawn — integration and return |
+
+Chapters are joined by slow fades — a blink, not a cut. Each world can also be entered on its own from the chapter list.
+
+## Original Generative Soundtrack
+
+The journey is scored by a fully procedural ambient engine (Web Audio API): detuned drone beds, slow pad swells drawn from per-chapter scales, sub-bass breathing, and bell shimmer through cathedral-scale reverb. Every sound is synthesized live at runtime — no samples, no licensed material — so the score is 100% original (store-distribution safe) and no two journeys sound the same.
+
 ## Features
 
-- **Complete 9-minute contemplative experience** - Polished immersive journey
-- **4 experimental pieces** - Early explorations of different phenomenological territories
+- **Unified ~21-minute journey** - Seven chapters, one continuous arc
+- **Individual chapter mode** - Enter any world on its own
+- **Original generative score** - Synthesized live, unique every session
 - **WebXR-based** - Works in VR headsets and desktop browsers
-- **Custom GLSL shaders** - Real-time visual rendering of consciousness states
-- **Spatial audio design** 
+- **Custom GLSL shaders** - Real-time visual rendering of consciousness states, Quest-performance tuned
 
 ## Experience Guide
 
 **Optimal Setup:**
 
 - VR headset (Quest, PSVR, PC VR) 
+- Headphones
 - Dedicated attention 
 
 **Navigation:**

@@ -1,4 +1,5 @@
 import { SHADERS, ShaderInfo } from '../shaders';
+import { JOURNEY_CHAPTERS, JOURNEY_TOTAL_MINUTES } from '../journey/journey';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 // ── Per-section animated canvas background ───────────────────────────────────
@@ -194,7 +195,7 @@ function ExperienceSection({
           fontFamily: '"Space Grotesk", system-ui, sans-serif',
           marginBottom: '20px',
         }}>
-          {String(index + 1).padStart(2, '0')} &mdash; Portal
+          Chapter {String(index + 1).padStart(2, '0')}
         </p>
 
         {/* Accent line */}
@@ -270,8 +271,93 @@ function ExperienceSection({
   );
 }
 
+// ── Journey hero CTA ─────────────────────────────────────────────────────────
+function BeginJourneyButton({ onClick }: { onClick: () => void }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '14px',
+        background: hovered
+          ? 'linear-gradient(90deg, #c084fc, #fbbf24)'
+          : 'rgba(255,255,255,0.04)',
+        border: `1px solid ${hovered ? 'transparent' : 'rgba(255,255,255,0.25)'}`,
+        borderRadius: '9999px',
+        padding: '18px 44px',
+        color: hovered ? '#040308' : '#ffffff',
+        fontSize: '0.9rem',
+        fontWeight: 600,
+        letterSpacing: '0.18em',
+        textTransform: 'uppercase',
+        fontFamily: '"Space Grotesk", system-ui, sans-serif',
+        cursor: 'pointer',
+        transition: 'all 0.4s cubic-bezier(0.4,0,0.2,1)',
+        boxShadow: hovered
+          ? '0 0 60px rgba(192,132,252,0.5), 0 0 30px rgba(251,191,36,0.3)'
+          : '0 0 30px rgba(192,132,252,0.12)',
+      }}
+    >
+      Begin the Journey
+      <span style={{
+        fontSize: '1.1rem',
+        transition: 'transform 0.3s ease',
+        transform: hovered ? 'translateX(5px)' : 'translateX(0)',
+      }}>
+        →
+      </span>
+    </button>
+  );
+}
+
+// ── Chapter arc strip — the journey's shape at a glance ─────────────────────
+function ChapterArc() {
+  return (
+    <div style={{
+      display: 'flex',
+      flexWrap: 'wrap',
+      justifyContent: 'center',
+      gap: '18px 26px',
+      maxWidth: '820px',
+      margin: '0 auto',
+    }}>
+      {JOURNEY_CHAPTERS.map((chapter, i) => (
+        <div key={chapter.shaderId} style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '8px',
+        }}>
+          <div style={{
+            width: '34px',
+            height: '3px',
+            borderRadius: '3px',
+            background: chapter.color,
+            boxShadow: `0 0 10px ${chapter.color}80`,
+          }} />
+          <span style={{
+            color: 'rgba(255,255,255,0.45)',
+            fontSize: '0.6rem',
+            fontWeight: 600,
+            letterSpacing: '0.18em',
+            textTransform: 'uppercase',
+            fontFamily: '"Space Grotesk", system-ui, sans-serif',
+            whiteSpace: 'nowrap',
+          }}>
+            {String(i + 1).padStart(2, '0')} {chapter.phase}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Gallery ──────────────────────────────────────────────────────────────────
-export function ShaderGallery({ onSelectShader, scrollToId }: { onSelectShader: (id: string) => void; scrollToId?: string | null }) {
+export function ShaderGallery({ onSelectShader, onBeginJourney, scrollToId }: { onSelectShader: (id: string) => void; onBeginJourney: () => void; scrollToId?: string | null }) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
@@ -293,10 +379,10 @@ export function ShaderGallery({ onSelectShader, scrollToId }: { onSelectShader: 
       WebkitOverflowScrolling: 'touch',
     }}>
 
-      {/* ── Hero header ── */}
+      {/* ── Hero: the Journey ── */}
       <header style={{
         position: 'relative',
-        height: '60vh',
+        minHeight: '100vh',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -304,16 +390,20 @@ export function ShaderGallery({ onSelectShader, scrollToId }: { onSelectShader: 
         textAlign: 'center',
         borderBottom: '1px solid rgba(255,255,255,0.06)',
         overflow: 'hidden',
+        padding: '10vh 24px',
       }}>
-        {/* Subtle static background glow */}
+        {/* Animated hero background */}
+        <ShaderPreviewCanvas color="#c084fc" />
+
+        {/* Vignette so text stays readable */}
         <div style={{
           position: 'absolute', inset: 0, pointerEvents: 'none',
-          background: 'radial-gradient(ellipse 70% 50% at 50% 50%, rgba(60,40,100,0.12) 0%, transparent 70%)',
+          background: 'radial-gradient(ellipse 90% 70% at 50% 50%, rgba(4,3,8,0.55) 0%, rgba(4,3,8,0.9) 100%)',
         }} />
 
-        <div style={{ position: 'relative', zIndex: 1 }}>
+        <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
           <p style={{
-            color: 'rgba(255,255,255,0.3)',
+            color: 'rgba(255,255,255,0.35)',
             fontSize: '0.65rem',
             fontWeight: 600,
             letterSpacing: '0.35em',
@@ -321,38 +411,49 @@ export function ShaderGallery({ onSelectShader, scrollToId }: { onSelectShader: 
             fontFamily: '"Space Grotesk", system-ui, sans-serif',
             marginBottom: '28px',
           }}>
-            Contemplative VR Experiences
+            A Longform Psychedelic VR Journey
           </p>
 
           <h1 style={{
-            fontSize: 'clamp(3rem, 8vw, 5rem)',
+            fontSize: 'clamp(3.5rem, 10vw, 6.5rem)',
             fontWeight: 200,
             color: '#ffffff',
             fontFamily: '"Space Grotesk", system-ui, sans-serif',
             letterSpacing: '-0.04em',
             lineHeight: 1.0,
-            marginBottom: '20px',
-            textShadow: '0 0 120px rgba(255,255,255,0.08)',
+            marginBottom: '24px',
+            textShadow: '0 0 120px rgba(192,132,252,0.25)',
           }}>
             Ontik
           </h1>
 
-          {/* Thin divider line */}
-          <div style={{
-            width: '40px', height: '1px',
-            background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)',
-            margin: '0 auto 20px',
-          }} />
+          <p style={{
+            color: 'rgba(255,255,255,0.5)',
+            fontSize: 'clamp(0.95rem, 2vw, 1.1rem)',
+            fontFamily: '"Space Grotesk", system-ui, sans-serif',
+            fontWeight: 300,
+            lineHeight: 1.8,
+            maxWidth: '560px',
+            marginBottom: '40px',
+          }}>
+            One continuous {JOURNEY_TOTAL_MINUTES}-minute arc through seven abstract worlds —
+            onset, dissolution, return. Scored by an original generative
+            soundtrack that is synthesized live, so no two journeys sound the same.
+          </p>
+
+          <BeginJourneyButton onClick={onBeginJourney} />
 
           <p style={{
-            color: 'rgba(255,255,255,0.35)',
-            fontSize: '0.85rem',
+            color: 'rgba(255,255,255,0.28)',
+            fontSize: '0.7rem',
             fontFamily: '"Space Grotesk", system-ui, sans-serif',
-            fontWeight: 400,
-            letterSpacing: '0.06em',
+            letterSpacing: '0.08em',
+            margin: '18px 0 56px',
           }}>
-            Choose a portal to begin
+            ~{JOURNEY_TOTAL_MINUTES} minutes · headphones recommended · works on desktop &amp; in VR
           </p>
+
+          <ChapterArc />
         </div>
 
         {/* Scroll cue */}
@@ -368,7 +469,7 @@ export function ShaderGallery({ onSelectShader, scrollToId }: { onSelectShader: 
             textTransform: 'uppercase',
             fontFamily: '"Space Grotesk", system-ui, sans-serif',
           }}>
-            Scroll
+            Explore the chapters
           </span>
           <div style={{
             width: '1px', height: '36px',
@@ -376,6 +477,23 @@ export function ShaderGallery({ onSelectShader, scrollToId }: { onSelectShader: 
           }} />
         </div>
       </header>
+
+      {/* ── Chapters intro strip ── */}
+      <div style={{
+        textAlign: 'center',
+        padding: '72px 24px 8px',
+      }}>
+        <p style={{
+          color: 'rgba(255,255,255,0.3)',
+          fontSize: '0.65rem',
+          fontWeight: 600,
+          letterSpacing: '0.35em',
+          textTransform: 'uppercase',
+          fontFamily: '"Space Grotesk", system-ui, sans-serif',
+        }}>
+          The Chapters — enter any world on its own
+        </p>
+      </div>
 
       {/* ── Experience sections ── */}
       {SHADERS.map((shader, i) => (
@@ -399,8 +517,10 @@ export function ShaderGallery({ onSelectShader, scrollToId }: { onSelectShader: 
           fontSize: '0.72rem',
           fontFamily: '"Space Grotesk", system-ui, sans-serif',
           letterSpacing: '0.1em',
+          lineHeight: 2,
         }}>
-          Best experienced in VR · Meta Quest optimized
+          Best experienced in VR · Meta Quest optimized<br />
+          Original generative soundtrack — synthesized live, every session unique
         </p>
       </footer>
 

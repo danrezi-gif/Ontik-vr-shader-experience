@@ -8,7 +8,11 @@ import { InfiniteLightShader } from "./shaders/InfiniteLightShader";
 import { SacredVesselsShader } from "./shaders/SacredVesselsShader";
 import { TranscendentDomainShader } from "./shaders/TranscendentDomainShader";
 import { OceanicDissolutionShader } from "./shaders/OceanicDissolutionShader";
+import { PrismaticBloomShader } from "./shaders/PrismaticBloomShader";
+import { SolarReturnShader } from "./shaders/SolarReturnShader";
 import { SHADERS } from "./shaders";
+import { JOURNEY_CHAPTERS, CHAPTER_FADE_SECONDS, getJourneyPosition, JourneyPosition } from "./journey/journey";
+import { journeySoundtrack } from "./audio/generativeSoundtrack";
 import "@fontsource/inter";
 import * as THREE from "three";
 
@@ -46,6 +50,10 @@ function ShaderRenderer({ shaderId, speed, pulse, brightness, colorShift, zoom, 
       return <TranscendentDomainShader speed={speed} brightness={brightness} colorShift={colorShift} headRotationY={headRotationY} introProgress={introProgress} audioTime={audioTime} />;
     case 'oceanic-dissolution':
       return <OceanicDissolutionShader speed={speed} brightness={brightness} colorShift={colorShift} headRotationY={headRotationY} introProgress={introProgress} audioTime={audioTime} envelopmentRef={envelopmentRef} onExperienceComplete={onExperienceComplete} />;
+    case 'prismatic-bloom':
+      return <PrismaticBloomShader speed={speed} brightness={brightness} colorShift={colorShift} zoom={zoom} pulse={pulse} headRotationY={headRotationY} introProgress={introProgress} />;
+    case 'solar-return':
+      return <SolarReturnShader speed={speed} brightness={brightness} colorShift={colorShift} zoom={zoom} pulse={pulse} headRotationY={headRotationY} introProgress={introProgress} />;
     default:
       return <AbstractWavesShader speed={speed} brightness={brightness} colorShift={colorShift} zoom={zoom} pulse={pulse} headRotationY={headRotationY} introProgress={introProgress} />;
   }
@@ -170,6 +178,9 @@ function VRControllerHandler({ onBack, onSpeedChange, onBrightnessChange, onColo
   useFrame((state) => {
     const session = state.gl.xr.getSession();
     if (!session?.inputSources) return;
+
+    // Resume the generative score if Quest suspended its context on VR entry
+    journeySoundtrack.ensureRunning();
 
     // Resume audio context when in VR (Quest suspends it on VR entry)
     if (!audioResumed.current && globalAudio.listener) {
@@ -915,6 +926,56 @@ function VRIntroAnimator({ started, onProgress, onComplete, shaderId }: VRIntroA
   return null;
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+// Journey conductor — drives the unified longform experience.
+// Runs inside the Canvas with useFrame so timing stays reliable in VR
+// (window rAF is not serviced during XR sessions).
+// ────────────────────────────────────────────────────────────────────────────
+interface JourneyConductorProps {
+  active: boolean;
+  onUpdate: (pos: JourneyPosition) => void;
+  onComplete: () => void;
+}
+
+function JourneyConductor({ active, onUpdate, onComplete }: JourneyConductorProps) {
+  const startRef = useRef<number | null>(null);
+  const completedRef = useRef(false);
+  const lastRef = useRef({ chapterIndex: -1, fade: -1, chapterTime: -1 });
+
+  useFrame(() => {
+    if (!active) {
+      startRef.current = null;
+      completedRef.current = false;
+      lastRef.current = { chapterIndex: -1, fade: -1, chapterTime: -1 };
+      return;
+    }
+    if (completedRef.current) return;
+    if (startRef.current === null) {
+      startRef.current = Date.now();
+    }
+
+    const elapsed = (Date.now() - startRef.current) / 1000;
+    const pos = getJourneyPosition(elapsed);
+
+    if (pos.complete) {
+      completedRef.current = true;
+      onComplete();
+      return;
+    }
+
+    // Quantize updates so React isn't re-rendered at full frame rate
+    const fade = Math.round(pos.fade * 100) / 100;
+    const chapterTime = Math.round(pos.chapterTime * 10) / 10;
+    const last = lastRef.current;
+    if (pos.chapterIndex !== last.chapterIndex || fade !== last.fade || chapterTime !== last.chapterTime) {
+      lastRef.current = { chapterIndex: pos.chapterIndex, fade, chapterTime };
+      onUpdate({ ...pos, fade, chapterTime });
+    }
+  });
+
+  return null;
+}
+
 // Audio time tracker - reads playback position from globalAudio
 interface AudioTimeTrackerProps {
   onTimeUpdate: (time: number) => void;
@@ -954,6 +1015,13 @@ function App() {
   const [audioTime, setAudioTime] = useState(0);
   const [vrSessionActive, setVrSessionActive] = useState(false);
 
+  // Journey mode - the unified longform experience
+  const [journeyActive, setJourneyActive] = useState(false);
+  const [journeyChapterIndex, setJourneyChapterIndex] = useState(0);
+  const [journeyFade, setJourneyFade] = useState(0);
+  const [journeyChapterTime, setJourneyChapterTime] = useState(0);
+  const journeyFadeOutStartedRef = useRef(false);
+
   // Shared envelopment state for Alien Womb (written by shader, read by hands)
   const envelopmentRef = useRef(0);
 
@@ -985,15 +1053,22 @@ function App() {
     return () => unsubscribe();
   }, []);
 
+  // The shader actually on screen: journey chapters override manual selection
+  const journeyChapter = journeyActive ? JOURNEY_CHAPTERS[journeyChapterIndex] : null;
+  const activeShaderId = journeyChapter ? journeyChapter.shaderId : selectedShader;
+
   // Calculate effective brightness (intro affects it for abstract-waves and tunnel-lights)
-  const hasIntro = selectedShader === 'abstract-waves' || selectedShader === 'tunnel-lights' || selectedShader === 'infinite-light' || selectedShader === 'sacred-vessels' || selectedShader === 'transcendent-domain' || selectedShader === 'oceanic-dissolution';
+  const hasIntro = !journeyActive && (selectedShader === 'abstract-waves' || selectedShader === 'tunnel-lights' || selectedShader === 'infinite-light' || selectedShader === 'sacred-vessels' || selectedShader === 'transcendent-domain' || selectedShader === 'oceanic-dissolution');
   const isInIntro = vrIntroStarted && hasIntro && !introComplete;
   const introBrightness = 0.1 + 0.9 * introProgress; // 0.1 → 1.0
-  const brightness = isInIntro ? introBrightness * baseBrightness : baseBrightness;
+  // In journey mode the conductor's fade envelope replaces the per-shader intro
+  const brightness = journeyActive
+    ? baseBrightness * journeyFade
+    : (isInIntro ? introBrightness * baseBrightness : baseBrightness);
 
   // Desktop preview: show shader at full intensity before VR intro starts
   // Once VR intro begins, use the animated introProgress value
-  const effectiveIntroProgress = vrIntroStarted ? introProgress : 1.0;
+  const effectiveIntroProgress = journeyActive ? 1.0 : (vrIntroStarted ? introProgress : 1.0);
 
   // BPM pulse disabled for now
   const pulse = 0;
@@ -1048,12 +1123,51 @@ function App() {
     setMusicStarted(true);
   }, []);
 
+  // Begin the unified journey (called from a click, so the AudioContext can start)
+  const handleBeginJourney = useCallback(() => {
+    setJourneyActive(true);
+    setJourneyChapterIndex(0);
+    setJourneyFade(0);
+    setJourneyChapterTime(0);
+    journeyFadeOutStartedRef.current = false;
+    setMusicStarted(false); // journey uses the generative score, not mp3 tracks
+    journeySoundtrack.start(JOURNEY_CHAPTERS[0].mood);
+  }, []);
+
+  const handleJourneyUpdate = useCallback((pos: JourneyPosition) => {
+    setJourneyChapterIndex(prev => {
+      if (prev !== pos.chapterIndex) {
+        journeySoundtrack.setChapter(JOURNEY_CHAPTERS[pos.chapterIndex].mood);
+      }
+      return pos.chapterIndex;
+    });
+    setJourneyFade(pos.fade);
+    setJourneyChapterTime(pos.chapterTime);
+
+    // Begin the final score fade as the last chapter dims
+    const isLastChapter = pos.chapterIndex === JOURNEY_CHAPTERS.length - 1;
+    const lastChapter = JOURNEY_CHAPTERS[JOURNEY_CHAPTERS.length - 1];
+    if (isLastChapter && !journeyFadeOutStartedRef.current &&
+        pos.chapterTime > lastChapter.duration - CHAPTER_FADE_SECONDS) {
+      journeyFadeOutStartedRef.current = true;
+      journeySoundtrack.fadeOut(CHAPTER_FADE_SECONDS);
+    }
+  }, []);
+
   const handleBack = useCallback(() => {
     // Exit VR if in VR mode
     const session = store.getState().session;
     if (session) {
       session.end();
     }
+
+    // Tear down journey mode and its generative score
+    journeySoundtrack.stop();
+    setJourneyActive(false);
+    setJourneyChapterIndex(0);
+    setJourneyFade(0);
+    setJourneyChapterTime(0);
+    journeyFadeOutStartedRef.current = false;
 
     // Stop all audio when leaving VR - PROPERLY reset state
     if (globalAudio.audio) {
@@ -1164,11 +1278,14 @@ function App() {
     }
   }, [checkVRSupport]);
 
-  const currentShader = SHADERS.find(s => s.id === selectedShader);
+  const currentShader = SHADERS.find(s => s.id === activeShaderId);
+  const displayName = journeyChapter
+    ? `${journeyChapter.phase} · ${journeyChapter.title}`
+    : (currentShader?.name || 'Shader');
 
-  // Show gallery if no shader selected
-  if (!selectedShader) {
-    return <ShaderGallery onSelectShader={handleSelectShader} scrollToId={lastViewedShaderId} />;
+  // Show gallery if nothing is running
+  if (!selectedShader && !journeyActive) {
+    return <ShaderGallery onSelectShader={handleSelectShader} onBeginJourney={handleBeginJourney} scrollToId={lastViewedShaderId} />;
   }
 
   // Show VR experience for selected shader
@@ -1192,7 +1309,7 @@ function App() {
               onCapture={handleHeadRotationCapture}
             />
             <ShaderRenderer
-              shaderId={selectedShader}
+              shaderId={activeShaderId!}
               speed={speed}
               pulse={pulse}
               brightness={brightness}
@@ -1200,9 +1317,9 @@ function App() {
               zoom={zoom}
               headRotationY={headRotationY}
               introProgress={effectiveIntroProgress}
-              audioTime={audioTime}
+              audioTime={journeyActive ? journeyChapterTime : audioTime}
               envelopmentRef={envelopmentRef}
-              onExperienceComplete={handleBack}
+              onExperienceComplete={journeyActive ? undefined : handleBack}
             />
             <VRControllerHandler
               onBack={handleBack}
@@ -1212,8 +1329,16 @@ function App() {
               onZoomChange={handleZoomChange}
               vrSessionActive={vrSessionActive}
             />
-            <HandGlows shaderId={selectedShader} envelopmentRef={envelopmentRef} />
-            <BackgroundMusic shouldPlay={musicStarted} shaderId={selectedShader} headRotationY={headRotationY} />
+            <HandGlows shaderId={activeShaderId!} envelopmentRef={envelopmentRef} />
+            {!journeyActive && selectedShader && (
+              <BackgroundMusic shouldPlay={musicStarted} shaderId={selectedShader} headRotationY={headRotationY} />
+            )}
+            {/* Journey conductor - advances chapters and drives the fade envelope */}
+            <JourneyConductor
+              active={journeyActive}
+              onUpdate={handleJourneyUpdate}
+              onComplete={handleBack}
+            />
             {/* VR Intro animator - drives brightness fade using useFrame */}
             <VRIntroAnimator
               started={vrIntroStarted && hasIntro}
@@ -1230,8 +1355,52 @@ function App() {
         onEnterVR={enterVR}
         onBack={handleBack}
         vrError={vrError}
-        shaderName={currentShader?.name || 'Shader'}
+        shaderName={displayName}
       />
+      {/* Journey HUD - chapter progress (desktop overlay; not visible in-headset) */}
+      {journeyActive && (
+        <div style={{
+          position: 'absolute',
+          top: '24px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 1000,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '10px',
+          pointerEvents: 'none',
+        }}>
+          <div style={{
+            color: `rgba(255,255,255,${0.25 + 0.55 * journeyFade})`,
+            fontSize: '0.7rem',
+            fontWeight: 600,
+            letterSpacing: '0.3em',
+            textTransform: 'uppercase',
+            fontFamily: '"Space Grotesk", sans-serif',
+            textShadow: '0 2px 8px rgba(0,0,0,0.8)',
+          }}>
+            Chapter {journeyChapterIndex + 1} / {JOURNEY_CHAPTERS.length}
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            {JOURNEY_CHAPTERS.map((c, i) => (
+              <div key={c.shaderId} style={{
+                width: '24px',
+                height: '2px',
+                borderRadius: '2px',
+                background: i < journeyChapterIndex
+                  ? c.color
+                  : i === journeyChapterIndex
+                    ? c.color
+                    : 'rgba(255,255,255,0.15)',
+                opacity: i === journeyChapterIndex ? 0.4 + 0.6 * journeyFade : (i < journeyChapterIndex ? 0.8 : 1),
+                boxShadow: i === journeyChapterIndex ? `0 0 8px ${c.color}` : 'none',
+                transition: 'opacity 0.3s ease',
+              }} />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
