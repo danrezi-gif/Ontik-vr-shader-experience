@@ -1,8 +1,11 @@
 name: Deploy to GitHub Pages
 
+# Deploys run from main only (github-pages environment restriction).
+# After pushing to the experimental branch, trigger this workflow on main
+# via workflow_dispatch to refresh /exp.
 on:
   push:
-    branches: [main, master, claude/vr-psychedelic-experience-6q0bzx]
+    branches: [main, master]
   workflow_dispatch:
 
 permissions:
