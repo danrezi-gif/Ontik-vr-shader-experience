@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, claude/vr-psychedelic-experience-6q0bzx]
   workflow_dispatch:
 
 permissions:
@@ -14,23 +14,49 @@ concurrency:
   group: "pages"
   cancel-in-progress: true
 
+env:
+  # Experimental build published under /exp while the stable site stays at /.
+  # Remove this branch (and the exp steps) once the journey version is promoted.
+  EXP_BRANCH: claude/vr-psychedelic-experience-6q0bzx
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout stable (main)
         uses: actions/checkout@v4
+        with:
+          ref: main
+          path: stable
+
+      - name: Checkout experimental
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXP_BRANCH }}
+          path: experimental
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Install dependencies
-        run: npm install
+      - name: Build stable site (served at /)
+        working-directory: stable
+        run: |
+          npm install
+          npm run build
 
-      - name: Build
-        run: npm run build
+      - name: Build experimental site (served at /exp)
+        working-directory: experimental
+        run: |
+          npm install
+          npx vite build --base=/exp/
+
+      - name: Combine sites
+        run: |
+          mkdir -p stable/dist/public/exp
+          cp -r experimental/dist/public/. stable/dist/public/exp/
+          rm -f stable/dist/public/exp/CNAME
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
@@ -38,7 +64,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './dist/public'
+          path: './stable/dist/public'
 
   deploy:
     environment:
