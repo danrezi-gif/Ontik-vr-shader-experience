@@ -2,11 +2,13 @@
 
 **Immersive WebXR worlds exploring altered perception through light, motion and sound.**
 
-Ontik is a series of navigable audiovisual environments built with WebXR, Three.js and custom GLSL shaders. Rather than treating VR as a simulation of ordinary space, the project uses it to construct unfamiliar perceptual worlds—spaces organized around atmosphere, scale, movement and sensory intensity.
+[Enter Ontik](https://ontik.app)
 
-The work draws on phenomenology, mystical experience, psychedelic aesthetics and contemplative practice, but remains an artwork rather than a model of any single state of consciousness.
+![Ontik — The Cosmic Attractor](img/ontik-cosmic-attractor.jpg)
 
-**Live:** https://ontik.app
+Ontik is a series of navigable audiovisual environments built with WebXR, Three.js and custom GLSL shaders. Rather than using VR to simulate ordinary space, the project constructs unfamiliar perceptual worlds organized around atmosphere, scale, movement and sensory intensity.
+
+The work draws on phenomenology, mystical experience, psychedelic aesthetics and contemplative practice, while remaining an artwork rather than a model of any single state of consciousness.
 
 ## The experience
 
@@ -18,6 +20,16 @@ Ontik currently includes a longer contemplative journey alongside several shorte
 - treating immersive space itself as an artistic medium
 
 A VR headset offers the strongest experience, but the worlds can also be entered from a desktop browser.
+
+## Selected environments
+
+| The Cosmic Attractor | Alien Womb |
+| --- | --- |
+| ![The Cosmic Attractor](img/ontik-cosmic-attractor.jpg) | ![Alien Womb](img/ontik-alien-womb.jpg) |
+
+| Alpha and Omega | The Ascension |
+| --- | --- |
+| ![Alpha and Omega](img/ontik-alpha-and-omega.jpg) | ![The Ascension](img/ontik-the-ascension.jpg) |
 
 ## Technical approach
 
