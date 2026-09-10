@@ -1,104 +1,62 @@
-# Ontik: VR Shader Experience
+# Ontik
 
-Experimental WebXR experiences exploring consciousness states through shader-based environments.
+**Immersive WebXR worlds exploring altered perception through light, motion and sound.**
 
-🌀 **[Live Demo](https://ontik.app)**
+Ontik is a series of navigable audiovisual environments built with WebXR, Three.js and custom GLSL shaders. Rather than treating VR as a simulation of ordinary space, the project uses it to construct unfamiliar perceptual worlds—spaces organized around atmosphere, scale, movement and sensory intensity.
 
-## About
+The work draws on phenomenology, mystical experience, psychedelic aesthetics and contemplative practice, but remains an artwork rather than a model of any single state of consciousness.
 
-This project investigates how immersive VR and shader-based environments can render phenomenological states that exist beyond ordinary language—the territory where self-boundaries dissolve into something vast, ancient, and numinous.
+**Live:** https://ontik.app
 
-Situated at the intersection of consciousness research, contemplative technology, and experimental art, these experiences prioritize atmosphere and phenomenological accuracy over traditional game mechanics. The aesthetic draws from cosmic horror, psychedelic visuals, and mystical traditions, creating navigable spaces that evoke both wonder and existential awe.
-## Features
+## The experience
 
-- **Complete 9-minute contemplative experience** - Polished immersive journey
-- **4 experimental pieces** - Early explorations of different phenomenological territories
-- **WebXR-based** - Works in VR headsets and desktop browsers
-- **Custom GLSL shaders** - Real-time visual rendering of consciousness states
-- **Spatial audio design** 
+Ontik currently includes a longer contemplative journey alongside several shorter experimental environments. Across them, the emphasis is on:
 
-## Experience Guide
+- shifting the felt relation between body, space and scale
+- using light and motion as primary compositional materials
+- creating environments that move between awe, estrangement and attraction
+- treating immersive space itself as an artistic medium
 
-**Optimal Setup:**
+A VR headset offers the strongest experience, but the worlds can also be entered from a desktop browser.
 
-- VR headset (Quest, PSVR, PC VR) 
-- Dedicated attention 
+## Technical approach
 
-**Navigation:**
+- **WebXR** — immersive browser-based delivery
+- **Three.js** — scene architecture and rendering
+- **GLSL shaders** — real-time visual systems
+- **JavaScript / HTML** — interaction and application structure
+- **Spatial audio** — sound as part of the perceptual environment
 
-- VR: Use controllers or gaze-based selection
-
-## Tech Stack
-
-- **WebXR** - Cross-platform VR framework
-- **Three.js** - 3D graphics library
-- **GLSL Shaders** - Custom visual effects
-- **JavaScript/HTML5** - Core implementation
-
-## Running Locally
+## Run locally
 
 ```bash
-# Clone the repository
 git clone https://github.com/danrezi-gif/Ontik-vr-shader-experience.git
 cd Ontik-vr-shader-experience
-
-# Serve with any static file server
-# Example with Python:
 python -m http.server 8000
-
-# Or with Node.js:
-npx http-server
-
-# Open browser to localhost:8000
 ```
 
-**Note:** WebXR requires HTTPS in production. Use a tool like `ngrok` for local VR testing.
+or:
 
-## Project Context
+```bash
+npx http-server
+```
 
-This work is part of ongoing research into:
+Open the local server in a browser. WebXR requires HTTPS outside local development.
 
-- Phenomenology of mystical experiences
-- VR as contemplative technology
-- Rendering subjective consciousness states
-- Intersection of psychedelic research and creative technology
+## Artistic context
 
-Developed by Daniel Rezinovsky, PhD candidate in Religious Studies at Rice University, working at the intersection of consciousness research, spirituality, and creative technology.
+The recurring question behind Ontik is simple: **what happens when an environment is composed not primarily as a place to represent, but as a way of reorganizing experience?**
 
-## Feedback Welcome
+The project belongs to a wider body of work concerned with altered perception, mystical and visionary experience, artificial environments and the relationship between consciousness and technology.
 
-For those with direct experience of altered states, mystical encounters, or psychedelic experiences:
-
-**What resonates? What feels authentic vs artificial?**
-
-I’m particularly interested in how these visual/spatial metaphors land for people with firsthand phenomenological knowledge.
+Ontik is part of [Monkadelic](https://monkadelic.me), Daniel Rezinovsky's experimental artistic practice.
 
 ## Connect
 
-- **Instagram:** [@monkadelic_](https://www.instagram.com/monkadelic_/)
-- **Website:** [danielrezinovsky.com](https://danielrezinovsky.com)
-- **YouTube:** [Olhar Desperto](https://www.youtube.com/@olhardesperto)
+- [Monkadelic](https://monkadelic.me)
+- [Daniel Rezinovsky](https://danielrezinovsky.com)
+- [Instagram @monkadelic_](https://www.instagram.com/monkadelic_/)
 
 ## License
 
-This project is licensed under the MIT License - see the <LICENSE> file for details.
-
-The MIT License allows you to use, modify, and distribute this code freely. If you create something inspired by this work, please provide attribution. Thanks.
-
-## Citation
-
-If you reference this work in academic or research contexts:
-
-```
-Rezinovsky, D. (2025). VR Shader Experience: Experimental WebXR 
-environments for consciousness phenomenology. 
-GitHub. https://github.com/danrezi-gif/Ontik-vr-shader-experience
-```
-
-## Acknowledgments
-
-Built with insights from consciousness research, contemplative traditions, and the psychedelic community. Special thanks to the open-source WebXR and Three.js communities.
-
------
-
-**Support this work:** If you find value in these experiences, consider supporting on [itch.io](https://itch.io) (coming soon) or sharing with others exploring consciousness and technology.
+MIT — see [LICENSE](LICENSE).
